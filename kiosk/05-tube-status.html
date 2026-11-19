@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=800, height=480, initial-scale=1">
+  <title>Tube Status Board</title>
+  <style>
+
+    /* ═══════════════════════════════════════════════════════════════════
+       FONTS + BASE — standalone module, own CSS/JS, no shared dependencies.
+       Inter throughout, with tabular figures for the clock and times.
+       All sizes are fixed pixels for the 800 × 480 screen.
+    ═══════════════════════════════════════════════════════════════════ */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    :root {
+      --bg:        #0a0c0f;
+      --surface:   #13171c;
+      --surface-2: #181d23;
+      --hairline:  #232a32;
+      --text:      #eef1f4;
+      --muted:     #8b949e;
+      --faint:     #5c6570;
+      --good:      #34c37a;
+      --warn:      #f2b200;
+      --bad:       #ff5a4f;
+      --info:      #9aa5ad;
+      --tfl-red:   #DC241F;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 800px; height: 480px;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-feature-settings: 'tnum' 1, 'cv11' 1;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+      border-top: 3px solid var(--tfl-red);
+    }
+
+    /* ── Header ── */
+    #header {
+      height: 62px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+    #brand { display: flex; align-items: center; gap: 14px; }
+    #roundel { height: 38px; width: auto; display: block; }
+    #title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      line-height: 1.1;
+    }
+    #subtitle {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.2px;
+      margin-top: 3px;
+    }
+    #when { text-align: right; }
+    #clock {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      line-height: 1;
+    }
+    #date {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    /* ── Banner: only shown when an update fails (or Thameslink is
+       unavailable). The last good data stays on screen underneath. ── */
+    #fetch-error {
+      display: none;
+      flex-shrink: 0;
+      margin: 0 16px 6px;
+      padding: 5px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #ffb4ae;
+      background: rgba(255, 90, 79, 0.10);
+      border: 1px solid rgba(255, 90, 79, 0.35);
+      border-radius: 6px;
+      line-height: 1.35;
+    }
+    #fetch-error::before { content: '⚠  '; color: var(--bad); }
+
+    /* ── Train strip: a slim track the train crosses. Turns amber
+       while a delay is on one of your routes. ── */
+    #train-track {
+      position: relative;
+      height: 34px;
+      flex-shrink: 0;
+      overflow: hidden;
+      margin: 0 16px;
+    }
+    #train-track::after {          /* the rail */
+      content: '';
+      position: absolute;
+      left: 0; right: 0; bottom: 5px;
+      height: 2px;
+      border-radius: 1px;
+      background: var(--hairline);
+      transition: background 1.2s ease;
+    }
+    #train-track.delayed::after { background: rgba(242, 178, 0, 0.55); }
+    #train-img {
+      position: absolute;
+      bottom: 8px;
+      left: 800px;
+      line-height: 0;
+    }
+    #train-img svg {
+      height: 22px;              /* train height: change this number to resize */
+      width: auto;
+      display: block;
+    }
+
+    /* ── Board: two columns of four cards ── */
+    #board {
+      flex: 1;
+      display: none;
+      gap: 10px;
+      padding: 6px 16px 14px;
+      min-height: 0;
+    }
+    .col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    .card {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.8s ease;
+    }
+    .card.is-warn { border-color: rgba(242, 178, 0, 0.45); }
+    .card.is-bad  { border-color: rgba(255, 90, 79, 0.55); }
+
+    .line-badge {
+      width: 150px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.1px;
+    }
+    .line-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 14px;
+    }
+    .line-status-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+    .status-icon {
+      width: 20px; height: 20px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .status-icon svg { width: 12px; height: 12px; display: block; }
+    .line-status {
+      flex: 1;
+      min-width: 0;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    /* Status text and reason both use the same scroller: text that fits
+       sits still, text that doesn't scrolls like a departure board. */
+    .scroll-wrap {
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .scroll-wrap > div { display: inline-block; white-space: nowrap; }
+    .scroll-wrap > div.scrolling { animation: marquee linear infinite; }
+    .scroll-wrap > div span { padding-right: 60px; }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* Always present, so every card is the same height whether or not
+       there's a disruption to show. */
+    .line-reason-wrap {
+      height: 18px;
+      margin-top: 5px;
+      padding-left: 29px;      /* lines up under the status text */
+    }
+    .line-reason {
+      font-size: 14px;
+      line-height: 18px;
+      color: #c3cad2;
+    }
+    .line-reason.note { color: var(--faint); }
+
+    /* ── Summary card (fourth slot in the right-hand column) ── */
+    .summary {
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 16px;
+      border-left-width: 4px;
+      transition: border-color 0.8s ease;
+    }
+    .summary-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+    }
+    .summary-headline {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      margin-top: 4px;
+    }
+    .summary-meta {
+      font-size: 12px;
+      color: var(--faint);
+      margin-top: 4px;
+    }
+
+    /* ── Loading / first-fetch failure ── */
+    #loading {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 18px;
+      font-weight: 500;
+      text-align: center;
+      padding: 0 40px;
+    }
+    #loading::before {
+      content: '';
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      border: 3px solid var(--hairline);
+      border-top-color: var(--muted);
+      animation: spin 0.9s linear infinite;
+    }
+    #loading.failed { color: var(--bad); }
+    #loading.failed::before { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Smooth crossfade when the board re-renders. */
+    #board.fade-in { animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0.35; } to { opacity: 1; } }
+
+    /* ── Debug overlay: add ?debug to the end of the URL to see every
+       disruption and why it was shown or hidden. ── */
+    #debug {
+      display: none;
+      position: fixed;
+      inset: 0;
+      overflow: auto;
+      background: rgba(5,8,12,0.95);
+      color: #cfc7b6;
+      font: 11px/1.45 monospace;
+      padding: 12px 16px;
+      white-space: pre-wrap;
+      z-index: 10;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div id="header">
+    <div id="brand">
+      <img id="roundel" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAACzCAYAAADi+HIOAABGi0lEQVR42u19d3hc1fH2O3PuNnVZ7kgrS5bcqMGmF9mU0GuQyQ8SQkkgCSGE9JCCSQgkpBHCR0kChJ7YpAAxhGrLYJtiYyBgbDWr2JabbNWVdveeM98f9+5KsmVbJpZ2Je95nn0Aob2ae868088MIbUGbQnAi8vAADCnAnZ/v7N5xpiMaFfGRK1kkoLka8IkEikwhPEQGg1CDolkgOAH4IeQJQTlft1ARAMIE6Ebgk4B2phom4hsIcJGEmoURp02qPcbtWFCbe2W3dCqUFZGCyoqpBwwBEjqBPf/otQW7FeAERyQUX8A21xYOD7ix3Q2dKiBOVxAUwAEBRjjIQp4CGAQBIBAYAQwcD4iAtPzd/ocHgEg97sMgN1/J/d3bRF0ixgSbCdgAwjVAnzEwPvE9NFBGXm1tHJldBcAlgPzFkBuRfxPp1YKcMkBMnczdR+ATZ5cYpN9tAAnG5KjRag0TVGGj8gFAhARgS0CDRdn/eMp9i+7Oy/p9SWRvv9EDI8WESwCPCAoArQAbcYYBtYJ8J4SvEHMS+1Q9MPg+vVdO2vq2RUwlAJfCnCJWPMBVV4O0IIekG2dmpcZNunHEOFMLTQHgkMyFXuJHGBFjMAGDASGnN0n6QErDYFw6AG1iICIGFBeIviIwAR0GoEWWUfAUiF6KU2rxXk1NY29wefyTcrsTAFu8LXZ4jKo3ubitpKSrDBHT4GhC4TkNC9Tvo8IYRF0G4ERaAJEHGuPKPn2XMSxYB0gEpSPiPzkkNlhTAcBy5jwLyK8MGFtfV38i+VQWABJab0U4PZ78MMFS0yb0cbSSSeJyGVCOCfAnK8AhEQQETEQGCQvwAayjOtCkiKoNGYoAjq06STCYhh5KhKlhUX19S077Y9BSuulAPc/mY3okeD1UwsmWsJzIXSFInzKz4SQEYRFDAuMOK4RjTBhIy4AEQMfAwgZs5EIf4eWRybWNKzsE2xJmZspwP0vQNswOXgkmL8IyKXpikdFjCAkIiTQIxFkewUfAC+RSmNChxZhyEsCPLC0qv7Zua4V4JqbKeClALdX0xExoG0smVRGLDdowUUZzNwhBlEDTeRG4Q/svRIINBGsDHa2IiyyiozcE+3WT8WinI5i7Bu9TQHuAF+3ADyvl4/WOCV4iiX8bSKc5SVCuzEQgY0DSJvtI/i0AJTOxB4Quoysgcjv10bxlzn19d0AaD7Ac1PAO7CZZ+eoY2PppGMU5GZFdL5FhDZjhASGeio7UmvP+2kgED+T8jMhpOUjDdxZUFX3GJxoqJqHAzuRfsACbj6gYhK3bkqwyCv0QxBd5SfiVmOEHMc/BbRPCDwRSBqT8hKhy5hlUTHzCqsbXwaARWWwdlfqlgLcCNRqcKqfdGVJiS+T7W+I4PtpTDktxsD1S1JA248aL12xEhHYME9GjfyksLqxhpzoCx9oOTw+wBhAkRN91PUlBadnsv1mGtMvDJCzQxvt1iSmwLb/pDkTQXUYY0IiJo3UZR7mlRunFH7zEucszKIyWCkNNxJ9NUDNAewPgsHcMT7+ORO+QgBCRlLBkCFaRqAtIpWlCCEjyyKkbyxc27hCeuqvR7y24wMAbEyAzAHsximFZ43x8ztpir7SJWJCIsat502BbSiYjaA0RHbYxvYQHe81vHR9afBH81ywLcLI13YjmtEWAdYcwH6+pMR3GNm/8BK+YQB0G2MTkZWCQEIFoSZA5ShGyJiKLqLritfWrR3plSojFnCxSFh1cf4hAaUeylR81HZtTMy3SLF8UoBOINCZiq2ISIttzA0F1Q2Pj2QTk0bgIcYPq64keLmP6V4PcVaHNjYRUlotGc/M9e3SmNBlzP9ryqq/adZKREdilcqIkvTze6KQprGk8FdZSj2uhbI6tNEpsCWx1CcoGyJtxuhMxdcf1F746ofFxUECtIywKOaI0XAxf+2DYDA3z4/HM1mdvUMb7QZNUkGRYbKMwM5WbIXFbIjAfLawsvENKYNFIyRRPiIYUQCLALtmWtGUgDF/TyM+ZIc2Nqe02nAFnQ4wKUDC3UaumVTd8ITrk2sM82DKsDcppcwBW9Xk4PFpxizxpsA2/P0cguoSMVEhX4ZSj9eVBL87pwL2fIBlmCsJGvZgq4BdVxo8J0A83wBp3UY0p6pFRoamA4QBk6NYtRnz64LK+u+4V6hkuKYNaLiDraak8LJ0pkc1oCIihlMh/xG1BBAS6FyLrRZj/hSsrL92OIOOhjPYaksLvpBB6i9hEdHOAaTANnKBZ+cptnZo81iwqv6K4Qq6YcegK2bCQxWw15UWXpnJ6i9hEWMjlcwe6YsAa7ttormKP99YWvg4AWbBMPTphhWxPWZk8PJMxY+HjRgbIE6F/Q8kVRcdZbFnh20eCVbXXzncSsF4uIGtdnLB+RnMj6bAdsCqOs9220RzLf5CfUnhPQRolEENF+UxLIiMlfjUlBaclE78sg3y2iIj3meTHqkt7mGJ9HOAslNb9AMi0S+I5lrsadbmZ0VV9T8ZLslxGi5gW1taOD0LeANEo7pHXjRSpFcLcgJBCMwAK/dGbGxIB+10ZLHBH9od/KF75hQYCIScyMJwbkq7W2HEgM5SbDXb5quTq+vvGw6goyTfVAYga6dMyMsU73IvUUmHiOYR0GtEAENud2Ny2ovDS85NWOMO+egSMQS0QqQVQJsQQhB0gShKEIGQJYAPJOkAZRAkG0C2h9jn7/WsqAjCDhANRAwR0UgoeRNAFGC8RKpd5JySqvrnk73gmZJ4M+NTaRpLg69ksprdOswr/sVleBBZfiL43Sk6bcYYEtQLZC1A/yXgYwtUazQ1mUB0W3fE3zmlujq8x2eXQ1WtKknPsO1c20PjRHQhiKYwZIYIDhaikjSmdC8RIu7cAy3QLgcMW/CJAzgQpKNDm+NLaxo/kiTulZK8gOupIrl3lFJfabaHbbmWEUerWGnsaLF2IxDBGkCWKqIKiKyY4EmvodWrIwMQQn3ObJ7z2Ws+qrHkoHyQdRgRnSgiZQA+lcEcEACdxsTANywb3Aqg05lUt5G1Ea2OKa6tbUeS5uiSEnCxy6N1k4NfzPGoP7XZJioEz/DTZhAfO/e82o0AIu+A5N9M8vyE8Y3v7exvCMAoAy8GMLui77y4vTFP78DJAoDGlIFmowyoqJD+TKymKcEibWiOEC4UYE6W4oyoCDqNSGwYyXDSeiKwcy22dmj9zKSqhgtdgZ10xc6UhIzKBJi6ycEj/YqW2QLLHkYmjzjMTelMbIHQaUw9kTxNJH+duLZxxc5m4OItoNkVztSZwZTIse7Si8tAsyucEVqx/1dTXBz0WfZ5JHw5E47zu92mjYgNomHTYEkE9iiLrWZtbi6qqr8jGftfUpIxKwGgj2aMScuOBlb4mKeGjOjh0JA1BrRMZtbOVNOlAP2xlX3/nL52bXtv7T0UABuIYOtvqumG0qKTBOZaAn0mXVGgXRvYAs0UH8SY7EEU7SFSYdFlhVWNrydbECXZAGcRYNeWBB/Os9SVO+zkD5K40XjJYFbGAdpLYui3B9XUvbgzyJLVkb8F4NkO+OKab/20oikw5mskuCpdcUarNvHGP0ntMAMmQERRkQY7giMm1de3zQOQLO3VKYkYVxGga0uC5blKzW/Txkayg03E9jFbPiJ0G/OGbei2oAu0XlHWYdWByh3VFZ9XXjU5vyRNqW9DcE2A2Wozzi36ZK7wMQI9ymK1PWqeKKqp/1wymZaUJGBjAFJXWDjO48V/mWhURCRpC5JdrUa5iilkpNYG5hVU1j3W611ouDe/iZmcMUatnxyc6VX8Ux/R2WERhI0kt/UhsLMUW21azy2sbliQLKZlcjB0OYgAES/uyVA8OmySt2xLBHYaE3uJpEPLbzeFZWZBZd1jApB7qGYkdJoiwMypgH0LwFIOVVjTsHJCZd05XdpcDkhjjsUWAG2SVHsLgbtFDBPds7Fk/BgAcksS8BQlXhA5kmddaeHF2cx/b09SU9K4QY5cxRwy5v2ImBsKqxpfB5xoIy0Y2bPPeg+rrCwpGZPO9p1+oiu7RRA1kpQDUHpMS/vxoprGzyfDOVGCD5EAUG1xcaZX6f9aRPnhJCxKFoG2mJSfCBExd29sj/xgVlNTyA2G6ANprG6sOxoANJQW/p8H9AcvU1578lYB6TQmFdL604XVjS8n2rRMLGOXOzk3IvuWbMUFYScFkGxgs9MVKwW0dIpcOrGy/sZZTU2h+XAGOR5oM6znAHbMfA5W1T8VEX1M2Jg3ch0T05Yk2w8BSAQC0N2VJSU+50gTp2gSxtzz4Qxdb5iWf4if6Wut2mgkmVkiAjtHsRU15r/txpxQWFk3fxFgCUAH8vjc2MivRWWwCqsbazZmjT6l3TYPZCu2CJBk8usI4E4jJsdS07yI3EiAQXni+J4SCbi5ThrghRylzmwzJrlyPG6pUIcx/95oq8/Nqq1tPZAnd+7FtxMCpHFK4U0+0G+TrceMAOIhiAjabSXTC9c0bEKCZhdwgjZAzQX0hpJJn85SfGabTh6wSS+wtWrz54mV9efPqq1tjZmQKYjtIrGNu29WQWX977q0vtQDRD1EbJIn2UxRA5OpOBs23UKAoDwxyiZREkgE4AjJ7ZLw0M0uh2PnWGy12ubXBVX1X3L9FT6QTcgBmpj2ipnwFNY0zu8Uc66CdPqSCXQE1aqN8RCu3jClcBoWwMxPgJAfcsDFclUNkyddksM8s1MnUa2k67PtsPUdBdX135FyKNdcMilY7X3NWonoipnwTK5ufLlTzFkk0p5EoCMtkHRmT0RkHgFSXj7yNRwBkEWAZUh+HIUIJYt2c83I7bb51aTqhpsXlcHCgpE7GHDQQVfV+Hq70HkKCHmcG+YJBx0TVKsxxkd8SeOUosMoAVpuSAG3qMzRbqUlwYtyFB8S0mKQBNpNesD2QFF1/XcPxPza/gadlMGaUl1XEYJcYgHG6unbkuizNmlEyjb6h0iAlhtS/RKrVqgrKXw7Q9GRIZN4wIk4PlubNs8Eq+ovHOkjb4dyrZgJz6yViNZOLrgix7Ie6TDGNo5LkUi7RgDAAuwI4bBJlfVrMYQRSx7Ct1QEmMbJ+adnKp7ZqUUSDjZAZyi22m39nuqIXCbOJU1JgW3/mpfFNY2Pthr71hzFFiThwScSgc5Q7CEj3xjqiCUPtWQxxN/gXv+dqGUA8RBxxJhmzbj4oKam0AKAbk0FSPY36Gwpg1VU1ThvhzZP5yi2TKJBR1DtxgiDLltXWDieFkAPVWEzDxHSmADTMK34EA/R6e3GSIKLXcUCtJdAIeCKSZUN6xaVwUqF/gfp+CugBeAQ+69uN3ptuiKVyMglAWQb6GyLM9mHKwFgdtkIAtxi92XE1l/KUKwkwRJOBDpbsdVum1+UVNU/L6kKksFmcFkA0PS1a9u1wWXGSMST6CAKgbuMQESu+XDGDO9sp+EQDXvACUBzKmDXFBdng+SznUaQyJpJx28ja4dt3imqafiRlEOhIqXZBnvNBbSUwZpU0/Bup8HNmYpVIv05AjhsRGcwl2REO04nADIENZaDr+GcQQtQbJ+XxWpsxLkRQAkCm1gAoiJhMvpqAvSCBXtvQZda+4nJK5yC58k19b/ZbuslmYotSawZLwokEFw9VDGFwQdcRbzW7gsGkEQGhEVgshSrLiM/D9au/1BSftuQH4HbsQxgui4s0m2hz9CSoSWGoDqMISY6o35qwcShCJ4M6sPjPSanBIssopM6jUlknxKdzsQ7bP1xkTfjl/ORMiUTZMqZRWWwiirr13Qbc0em49ObBNFCWmBnK04nzRcCwLyyYQw4xIIlQhdnKfa54eCE6TgiIi18E61eHSkvT5mSiVqz3ail1W1+tUObmgATJ6z0i0BRp032pb0tsmEJuHku8Sy4KCoAUcJ8N53FrDq0WVhcU/figdCDJMm1nKAcFFy/vsuI/MBLRJDECD8COGQMFHBs05RgkTtwiIcd4ATgWwGzqTRYzISjQsZAEmROMkDdYmyL6IcAaMGCFNMnHHQLHC1XVN3wdKvWb2UoUgkKoJAR2FmW8oYF5wAglA1DwMWIDgudkanYawR2QqKTAjuLmbuMPF1QVfe+lKfutiUT7ggQEb6lR+EkxqzUAhDoXDiJejP8ABcjmnC2kcRtJhG40xhtKet2SWm3ZDMttQBcXFP3Yoc2yzOYOUFajkPGAJDjNpaMH+OalTRsACdu9fW6wsIcERzXJQagBJiTAjuTmSOQhcG1tf/FAd78JxlXrAqJme5kl3kSAHyyAZ3BKivMvhNcutSwAVzsuewxR6Uz5UUFJhHmpBA46iQn7kI/wwxTK/FrToXTdm9L5uiFbVqvCTCphEQsBWIRwAanAsDsYWVSljmMTaAyLxOQgDyLACaNiUPavDdpbX2FoGdARWol2SqDmrVyZZSE/uRPEL+AwGERCOQkAWiwcrSDAzjXfzOEE6MOpw+5ZiGB8REBhIcIMChL/hlzB+xymVui8lSrbTosgpWA6hMKGwETpq2bPilIbqOr/f1HLOCW/dqeeiaaiDBB/jHt+Vzb3nZYyAAazEOJOAFEEaxmja5GM/ZfwFXWrIomAiZYKe5OyuAJymeAJ62et7mqpPjlXOaLWrXRQ9w6nbRAZyr2NUdpFnDLhq+XvKVQfYze3++6X5eCY7fJoZgZjo5f0WXEDH05l9hZiq2wjjwRqNz+OUbqVmmyL+WekTkYs6N6/GuJaL8hInaOpSwjodvVmtYfWsB+v7NlIfuhx/bnAw2EAJLpG7cWH+7ZhLCAGENrH4gI+5iwOjJ6KmVPeMwN2KTKuJJ4xdRIxoZI4DTvGlFEaqgPTADlJWCTDlyB7JKgdnl5/2q4nPkySFwPGOMkCBKxJDanMxWYHF5LnCxYwv68m9TiwTHKLEjnoNx0JggrFk7U1jltmMgYoZQ1ObwAR4okYQEut32XGGE9OIDD4DimAoKd+LQXI0knqabW7kW1Tjzf0GDhIsWMqZVaQ6wBUiu1UmuIViovNRyMLAKIKB7/EQFEBCJDTQeB3QK5RNGQAtz+UrVMMIMYnWImMMeCp0PPKEwEVs54UD2A9yQClCIYA5iIhkRMTw27YsDLUB7HQNmX9yEiKOXsg9YDp0NrgYQ1dNS4EWACPAz2KSfQYBIDvvjdVRms5zu8Q+Tw5//Ko8kBOAFMtwb5FWQwQGcEpsuGiWhnBzM8UF6GtmUI38+GCduApcCZHpg9dGVUiqCjBnZLBPAyRk1MR/7ENGRmeKCNYOu2bmzYGEL3tm4HhJkekKK9M7wAErZhd2tAETjLu0ctpRRBR1w6AhbGF6TjoAlp8PsUOkI21m/oRPOGTiBigCwv2CIYPbSok24b8Cp3Duv+PzeJGuhu7aS4vBY4w3LO8xPy6V4Bx0wwIRvTDxuFfzxxCmzbwLIYv793Ne6/+79QOX5obXb9TpeNwtJsvPD0aRADsCL84YE1uPd3HwBexgP3noiTTxwP2zZgInz1W2+i4j8NULm+XYAQo2HaoaPwzyd70XDfatx/90cAAz//xTG4+LwgtC1QVt9uJdGowZZt3Vj98Q68VtGEl17dgNDWblCuD3AZLkZzcHIWnn/6dFguA+8ujWdrgaUIv7zrv3j4/o/gH5OG5/56KvIPSocYAXEPDUYE27aFser9Zsz/5zosW7QRSLccLSH9MHlLGOl5flx+5RSUX1yETx2Wh7xRvj7vs6EphLdXbMU/n63Hcy80orMzCngUCILn/nYaJhdl7kKHiGBbcxjv/Xc7nv5nHZa8ugEIKGfqQ3907AgjZ2I6rrr+YJRfNAkHz8hFVqYn/jvN28N4971mPPG3Gjw5vwbRtghUtjd+fs67RHDnXcfhvDMLAADbmrtx5sUvo7M9CrJ2FRKx7/ziN8fignOCAIAdLWGc+ZmX0bYxhMOPHYe/PlwGrQVKEd59vxmXX7EIyqtg+sFc7Hk/+8XRuOTCSQCA1tYIzrrkFezY2InCaTlY+LfToKxe591rv9o6bDQ0duDtFVvxn5c34MOVWwGLodKtAVkIn0zDGUEgYGFaaXb8R+PGBgAju88rC+DzKkyfkhP/0YRxzncgwOSizD7Pe/LPJ+PI45/Bls1dYL/aVYLsjgb3pQvz0/v8v/7WqWUTcMOXZ6C6tg2//O1/8ec/fQz4FMjqmXbg9TIOnpYz4A0cneeP78OMqTmYOCGt/1+cCpx8wjjc+NUZeOChtfjajcscBnHN3DhzbA/jnIsm4Te/PAZTe72PMRL34zwexqRgBiYFMzD34iLUrmvHGRe9hOq1LaCAhelTslE8KXO3NJ90/DjccN10/OWJKlz31aWwtUB6aUjFDh2XXF6CX99xNAoLMnrAbpv4hce8UT6cfspEnH7KRNz41Rm4/hvLsXzxRqi8XkLTCCYFM+Jn0zIusMfKWiLnO4UFPd/p6IzCUs511fS0vjwwrTQbNeva8ZPvvgkrLwDb7iv8yaUh2Is/urpsWJZzzdTnVTh4+p7P+5iZo1F+4STcMW8m/vlcPX50y0pUfrgdapRvn62kAUcpY/ZrOKJhjCAa3Xs+WURga4No1MAYQaTXd7rDPc+JRg0mTkjDYw/PhhgDlv6B3C8N7u+FI+7fiJg9mlaRqEFJcRb+dM8JeOLxU+CB02i+d0Ai4tI7EAnmsXq2MNRlwxjZ5dB7a0WtBdddPRV33nkMTHskznwxsN3w7cPw7398GlNLsxGOmF183J1psm1BcVEmxk9IAyLOe+yNDq2d/3fl5aW4+/fHwXTafeloCeM7PzoSCx4/BYUFGX3o8FgMj4dhWT3+YyRi8KnD87DoxbNx4WcnQ28PO1aGu8LuWRsjCIUGVmcRO8/Yd8S9XxX7mXb3Mmob/Pg7h+PcuZNhN3dDWbzX53XGnufyaCSy9/PWWsBMKL+oCG+9fj7OvqgIenukz3vudx/OCTyQ60QO/DsC7PIdIuc5Is4h27bB6bMn4Oe3H40ffmt5v9JqTzTEnFuPh9DeEcVV17+BjrYIvD6FMaP8OPKwUTjrzAJMLsp0mFELLisvBjHhsv97FZaX+/yNGPM9959G/HNBDVS6t4/WNUZgWYw3V2wF/BaMeyCxz6oPmvH9m9+B8itkBiycdtpBuObzpXGQfP3a6bjngY9Ru6YFnkwPos3duPTKqbj7V8dCa4cxfF7GhqYQHnm0Eq8t2YT1m0OOpTA2gFmfGo1zzypA2YnjHUES0XHhMxA6iJw9v+7Kqfj9/R/j41Xb4MnyIrqtG5/70jTc+bNZDh3i0NHaHsVz/67HWyu2orUtirGj/Tj5hPE4++wCeL2MSNTA52X87dE5OLEphHeWbYY3x+f0RXTPuvfeDjRY0d93YnxDBJBxQPPI/Sdh5oc7UFfTBk63dvEl9/a82Hk/uaAWf3lwDTxZXgS8jOLCTJx8wniceUY+FBPCEYOcbC/++ddTMfusF7C8YiNUlnfA5mVSRSltW3DzNw/DW+9sxbN/rYHK80Pb+1aZRQREIgbPLGyA3t7t1MQZwcMQpOX68bXrD8bt82bCUoRIxOD/PlOE/1wzDY/+cTUQsHppZ+efb72zFQ8/9AGg0gBtdrWbAxbgVbuU/23e0o2XFtYClhcwgvmPr0bD+k787IefQtTW8HkVTj5+HGrfb4b2KkwozsL9dx3nSGEReDyMJ/++Dl+/YSmamzqdyKQrvdfazVj8QgN+/ev3ccIJ4/HTeTPh86p+gwb90VHf2IHbfnQkolEDywLmnDgeH7+1BTqsMbE0G/f8+jg36ijwWIxnXmjEjTcuQ31Vq+vgOI7Ob4jwqaPH4o/3n4RZR+QhGjXwehgP3nsiZh33DIw2g37H3uEbg1G5Pvz10dk4afa/YWynYn5foqax3129pgUvv1gDeNOAqAZE8CtmHHbkaNx99/EoO25c/D0f+ePJOOLof6ArakBMA/p7SZH4jgUtiJwAw8P3noiiGbnQHVGw2vcTIwJysr1QWV5YuV5YeT5YeQGEjODO297GVde/0SdN8JPvHg5/rh/ox0xOT7fg9QaQNsYP7+i+HysvABWw+mV0j4eg/D54crzwjfbDGwjgmYUN8RSBCDB2TABggumM4sYbDkZOthdR28BjMf61sAGXz30FzW0ReEYHoLK94DQLnGZBZXth5QXA6R4srWjCqef+B+++3wykWbv4vv3S8XxDH00xdrTfpcPGN244GNlZHkTdwNS/X2zEhRe8iPrGDlh5zjtbo3zuP/1Y9c5WnHrG8/jv6h3weBiRiMGhM3JxyaXFsFsjjqAY7NyWxbBtg2NmjsFddx0P3RaG+oR/N+C3oJQPvhwvVK77nrk+fPBeMz59xvNY+uYWeDyMcESjtDgTn79iCqQtAjVAPk044JQiVNa04smna13TUlxpNQceD4NswSe5vRqz8R1/xfFZiADP6Aw89sBq/GthQ/ygJhdl4sSTxgMRe5eN6w5rRCIRhNqiiLRFen2isF1fb3dCJOYXRKIGka4uHHpwbjxqSQRs3xEGjEHaWD8+e3ERRBwfqbUtgq/ctBzkZSi/QjRqnDyYK0KlV1jaM8oHthidoSj626j+6Djs4FG9AjHA9pYYHQHMvXBSHzqu/foyQBGsdA9s2zgf1we0bQNPng9tW7vw5ZuWO89zhdgVl052NLIZnHESsfd/+IkqNG3uglKOWfvVa6biii/PgN3cBcuz7+xtRHbiHfc9c7yIhDSuu2kZolEDpRgiwOfKiwGfBTNAQywpNJzXw7j2a0ux8r1meD2McMTg6Jmjcdddx0G3hT+RltsdCEQEzIwHH63skzQ+4eixAAyIqI/0v+ryUrz62kVY9OJZeO2Vc/Dqy+fgtVfOxQsLz0TeaB8k2n/uQNwcjtGCABPOPL8Ed/50FowRsJtEfX35ZieAWZqNYH5G3DF/9vlGbKpqgcrw9ETBCBBbYDqjfT7RtghMyN7tDdu+dABnnF+CO2916XABuviNzQAE06b0peOZ5xvRVNkCK8Oz2wBMNGLAOT4sW9KEFaua4bEYRMCRh+chd3waYMyg3JCKAW7J0s244toljj/nCtr7fnscDj12HOyWyG6DKPu6olEDzvbgo5XbsPydrbCUY5EdPCMXoyamwYT1gN4zKXw4r1ehq8vGpZ9fhHeXno+MDI8rrabhzXe24rEHPgYFrP10UIDxMlavbXUkl8dhkMJgOgCKaxFyy5di4ff+0h5+n0J/yTpjBMfOGoMVKy8GK0Jerg9BN7SuteOf3f3Ax1j7XjOgGMGCDBAB2hhYUFj61hZHK0ivCGVHBCeechBu+9GRsHUPWLQReCzCL+/6EC/8cx1UtrcvHUftmY4/PVqJD97eAigLBfnpfehY9tYWRwDJAAJj3TbeWrkVR88cDa0FeaN8mDg+gB31LXEhNhhr3NgA/nLfu/j9A0HceN10RCIGaQEL8x+dg6OOfwbdsWKH/eEvEkGiGu990IyTjx8HWwtysjwYPyaA7Rs6QT4V55+kBpzWgvQsL2o+3Iarv7YUTz86x2kwoQX3/+44vP/BdnywvMnJnewHLQcidHXZCIcN0tKsXcL7A3MU99wbKTPTg5mfGt2H+WMR2QcfrcK3vv2mE53cEUbaTsJkR0vYmevVC/yICsaNDcSjkjuvp55eB2izC3NnZvSlQ0RgjEPH43+rwQ1fXwZPhgfRljAC/r7X0FpaIw4JA4gGCAGtbdG4WeZR7O6tDDLvGDD78a1vv4nDD8nF7BPGIxw2mFaajT//8WR8du4r+/cuKQEdsdSGCIjY4csBvqa1T4y6c4Jyr8ELAqFnTsOe0B+NGnBuAH9/rBK/nDkG37vxEIRdafW3R2bj8Jl/75MP+sT75SZWc3N8CARUvGJh67ZuABJn2JjiWvb2FixZtBEq0BOQICJEowZt7ZF+qzT6Eyix/Zp75WIseGQtOMfnaCkC2juivdO0yM3xgbBT2YMrYXfJp7kVL5EB7E2MDiLgii+/jsceWA3K9kG52rKHDmfljeqfjn7VvRDG5PnidPbk3MgpYxso77jlor1/xwH97vkyNn3jsisW491lF2Dc2AAiEYNLL5qEFT84Ar/+2bJ9F6i7IU6EMH5sIB5/CIc1WtpcPthvPhwTurt13P8AgNGj/buV7wSnBdKoHG+8sBUAOvdyudxoAyvHjx98/y28tqQJPq/jz00rzcY9fzgRHS5D/C96TimChG2cdPw4MBO0dnyM9/67HeilVWI0L3xxPX7w/SX47k3L8f2bluH7Ny3D976xFD/6znK0tUZAinaRRkROydGFF76Aex9a6wSDXGBfcHYB4FE9xdoehdq6diev5x7a8ceMdfiLevkrAYWV7zfjWz98BzfcuAz3PbgGSjnV+0r1nxclInz4cQsuvPA/+N19q+NFyMyEC84OgnzKLZAWwMOoretw6XDYouyE8Y6mpQH4U+kWTjhmbHyPtzWHsXFTFwBCR4cdB0dWpgcZGR63QmjXBxsAYjFG9ypli0QMou7vy25Q50230LSuDZddUwFA4umCX86bicOODWJrc/f/qtggtkBle3HS8ePj+9u4oRMbN4YA78DqgHnvmk0Ai7B5Wxd2tPSEP084ZhzEZ/VrbrBFEFvjOPcAYszbsL5jz5JAnFInEOHyKxdj46YQvB4nkvilL0zBT753OLq6PnnTPctiRLtseHN8uOmrMyDi/CzUZeO11zcBbO2SaktPs2BZAfjHuCHx+MeP3YVPiYD6xg4880wtrr/+DSx/Zyu8HkY0anD53Mn4ytcPgb292wkG+RlVa1tRs649DsILzi7AuNIc6I5ovMYPPoXaqlb89o5VuOfud/HY32r6tTx2pmPDxk4880wtvvn1ZVj0+iYndB81+Mz5hfjmd47oRYeF6soWVNW2OYLICM49Mx+Tj8iD3RKBZzcRP69PwewI45xzC3HIjFxEok6lz4pV27BjUwggRn1jh1vBo5EWsHDkYXmgbnuXKg0ip+onbbQfRx6eF//51m3d6GyP7pF3bFtg5fmxaGE9vjtvJSzLuWnBTHjqL3P6lMntu1VE8PgUdGsXrvhcKUqLM+PW1suLNsLe3g3LQwOyKgcAOIC9Ci1NIXz08Q6IOOU0sz6VhzPPK4S9PQSv1yn1sSyCx8uItkXhH+XHV6+Z5oSYXWZb8X4z4FN7bBJjjIDTLGyqb8dl1yxxAO+aKFddXgp/f3WW/YKLXJo4LiTsHWFYBnjkwTJMLc1GJKqhFOGpp9dh/cc7gMCenF7a5b9jz+9Pu3g8DBUIgIhw1ZdfR6jLBrlS9zc/OwrTjxoLuy0Cr99CtKUbjy+oBZFjWmdneXHfb4+DRDR0l3aexQTLrxAYF4AvkNanmHlv+6DSA2Av4+qvvo62tiiUS8ftPz4SR5wwAXZLBF6/QrQljCfmO3TYtmPOP3LfSQikW4juCEMpip+zZTFYESJbQiiYkoN7f31sn4DTQ09UA7ajOZe9vaVPpce3v34whAl2WLtlYj17qdu6cO2VUzBubADhsHbA+14zpD0C7MVXsqMGVq4fv75tFRY8Ww+vl2HbghlTs3HemQUDS0xzDy2xd5SoRmRLB8rOnITf33G0ayU4vHrvg2udwof9mRZgBhAxePipGvdekKP5Hv5/J+D4UwoQ2doFu7kbdnMY0a1dGJXjxV8fOwUlxZmOb8aEFxdtRN1HO+BJs/balUnbBtYoPyqer8f35q2E5Zo9RmRAvqMIsG1bGHZrF6LbuqC3h2EJcNoZ+aioOA+fvbgIkYiBz6uwrbkbP751JTjN029ovTNkw7a70L21C3bzrp/oti6IveusFRFARzQ8mR6sfXcrvvOTFfH3CAQUHv3jyfB4FUxEgzO8uOfej7BpSxd8XifvdtG5QTw5/3SMzvE679ASgd0RRVdrBOGuLjRvDw/Y99YRDSvdg7oPt+MbN78dv2fn9TIe++PJ8GdYMGGHjv933+o+dJxw7Fi8+vI5mHXMWOi2qPve3bCbu2BCNs66YBIqXj4Hwfx0RG2B18N4a+U2PPN0LTjTAgUsLHt9E9ZUtcJjOYK37ITxuOf+k+ATILqtC3Zz2N3Lbnzmc9Nx+y1HxtMWRMAjT1UDHh5QYMIA4DQL13xpCdZWt8KynNzuQNfO523aopg4Lg0/+dkxePGZM5CZ6aRIPBbjN/d8hA+Xb4bK8Az4us6Agia2LeBsL554pBLXXTkVx84ajUjEYPzYAJa8fA7++Uwdlr65BV1hjRml2bj44iLkT0hDNGrg8Tj1Z9//8TuOvzPQ6FNMWv18FY6eOQblFxQ6dFh79yfS0hR+/pMj0RWykZ5uoWBiOo48Ig/T3VsA4bCGz6fQHdYo//wiNNW1w8r1wbRH+0g6ALjg7CDGZs0B+61dnP+Y3rvtVx+gubm73/C3tp33uPeu/+KcTxfg7NMPQjisMeuIPNz286PwvRuXwjsuDds3hHD1V99wrgZZHC87KzthPB57ogoVb2zCxs1dAANjM70o/+zkPsGQvUlv2xViD9/3Ec49Ix8Xn1eIcETjkBk5uPPOY/H1ayvgG5uG7RtDuOarb2ChS0c0anDcUWPw1hsXYFHFRryzchta2iIYPyaA448di6NnjYn7WV4vo60jiquuWwJbGzArMIBISxjf/uE7+Pf801ztKbj+i9NwyskT8K9n6lDX2IHcLC/mzJ6IM047qM/zHp9fizdeXg9Prg/RlsiA8nPKx2jfHsbcKxbhzVfPhden9ro/sfP+9CkTwdHj4M30IifTg+lTsnH0UWORneWJF4T7fArPvtCIm29+Gyrbu0934waeFmBCNKwx9/JXsfilc1BcmOFm3AmXXFSESy4q6vPrMaYGgCuvq8BH72yFGuWLE9e7Oru/G9ACpzkop1m45tolOOzgCzC1JMu5eSAC6lV50ft5ti3w+xVu/tZh/UbplCL4fArVtW248trXsfS1DVCj/H2KXbV2qiNEgKNnjsbRM0fvcWvue2gttm4KQaTnnfoUOgMgD+NL17+BD966ENlZXnR3a3zr+oPxwkvrsXhhPbxj0/DC39fh819agofuOzFeEDxxfADf+9Zh+F4/72PbAsvDYAIsD+2yF7vQIQD7LXz5hqU4/pixGJPnR1e3xte+OA3Pv9SI/zxdC+/YNDz/93W48suv48F7T4yXaylFOHX2RJw6e+Iu0WUiR1tub4ng4s++go9XNYNzvTCxe3E5Pix8uhY33/oubr/lSIc/IhrTp2Rj+ncO30UwOLlZxrK3t+Ir178BDljxgETsprpj1vUvaLQtsHK8+GD5Znz5m8vxyH0nuXQ6GnPnQmOt3QoZDcw+cTxm95N60Uag3ILw+x9cg6/ftBzazbbvS83mPl3P4TQLjXXtmH36QrxW0QSPh+OSYefrDT6fQuOGTpw/9xX89S+VfS+WilOjqBRBKepzqbEP6IyAXGl16RWL0O3a/D6vigMHbsg4Lc1yf8a7hM97Ryjr6jtw6+2rcNSJz2Lp4o3unaa+12B8Xnb9FRqg2eaYlJmZnvg7paf11Fg6e+fBxqoWXP+tN2Epgt/vvMO/njwVwam5iHZE4Rntx+N/XoOTT1+I5W9tgXcvpUmWRYiENf70cCUW/rsBlO6BNgaZGb3oSPf0oYMCFrY2dOC6G5dDKULA77RI+Mejc1ByaB6i7RF4RvvxyAMf45Qzn8e77zXD6+3xg2PnHBN2sas6L76yAcfPfhYVL2+AyvXFwRYXdDk+3HHrCnzlxmVoa486xda9ABQTDDHf6cn5NTjzvP+gI2RDPBxPDViW816x/fN5eff+XJ4fj96/Gv/vz2vivqJShOwsbzzTwezwjOI9n7fRgpde3YAzzn8RX7n2dUQJQIyufQnc7VOVhhZwhgeN6ztw6tkv4NLyYlzxf5PxqSNGIy/XB1aElpYIKmta8a9nG/Cnh9di2/pOh6l1j4SCRXhn5TanwFSAzVu7dquWtRuKfX/5Zlx9/VJ8+eqpiEScavvq2nbA40iZ9z/cjvwJabBtgVI9/kt3WGPrtm6sqWrFW+9sxfK3tqBzcwjI8IJ73U6OafHOkI1XlzQ5uSkZWA4iFLIBIry2pAkTxjkXUN9Z1Qz0utGsbQOV68ffHq/C4Yfk4lOH5yEaMQgEFM46uwAP3PORw5h5Prz5xmYcf+pCnHd2AeZ+pghHzxyDiW5rA2MErW0RVNa04eVXNuCvT9c6FSvpllO7KEDF0k2YFHQuoK5Yta1PdM+hw4dnn67BrYePwrFHjUE4YhDwK5xzThC//80HLh1+LFm0EcfMfg6fuWAS5n6mCLOOHI2xY/zwWIxQl8aGjSG8+fYWPDm/Fi/+p9ERarnefm94aCNQuT7cf/eHeOnVDbjui9Nw5mn5KJqUgbSAhWjUYPOWbrz59hY8+GglXnq+AfBbTvWGEQgTYBFaWiNYsmwz7KhTJVRb3w5Y/TO+1gLO9OIb33kLOVleFOSnAyJoa486eUuL0NkZxaIlm5w+L72O29aCzk4bDes78d77zXhj+Was+XA7YAs4x+vQ9AnaLBCyH97nbzlXEQRoiQAWI3NcAKPz/LAsB3BbN4eAziiQ7oHyqf7vCsWa4sQcIZ/aq41tOu2+ALCox5mOmvjt7767LoBtYuIMSLegvAyzO79HAIT3semuz22pHtY9jj0T0I/0JQKkPYrYBD0YAdKsPhE4Vm5vkLYoAIGV68OYMX5kuAXEO1oiaNnaBXTZgM+CSrf6NvEZKB29E+5urg8eFbeR4nS0OondwGg/xoz2w+dT6AzZ2LKlC/b2MMAEyuqbc91THlSHbKDbBrJ8mDA+gMxMD8Jhgy1bu9C1tRsguP1W+imWMOLwTpwH2Nm7PSXQDJy9iqVxCE4flJjfEDb9R5tst10/yOkMkGaBCZ+otcL/BLg+SWQBTNQ4TC0AFDlV7rFOT7L7HFHvqg4ZgG7uk38TQNDz/N7P293fcsqaZMAO9L6Y2/HKGuoxM/fUnKd3xK0/H5Zcho9peUR7d+0ikIehFPfbSeqT0mH6+d3e4XwdNQ4dgnjXrlgubV+YMHY1yralR/C6JlqsE9menhc/n514YE/5yHhNqGtK9g6AMe+Jb2JnjP3SVe5/Alz/4En1Ktzfi2LzZAcAosGmIy7UBsjse6veACX+vYZy7Zfi5YFqqNT65PsLJJ4Z9/c5i/vQA4l1Uq3OUyu1UoBLrdQasSalDNJ8OJCCJHSQvQEZk5o2PLz81RHONxYoY3DmwwlgG5OwU3MjaQyilBYfTv4qAFsnWEYSMXhw+MaCdN6xf3ndsMBjH+2pPfQEX+P53QaGh9h0NRATYOL3I2MqXo1MX6pgKw1Oabqk1mxCApJx3J5zccZ71zERi2BIRzMawPgJ3Kgz1jzdfeQ/CLaS/cw3+/19FJwaSDkCM7q6xn0UERGioR1pKQKdpVh168hzaZXbz2ek7MpkX3G+mYZzhMb/u00bTYQhNS3FwM622AI6fkwfd9xmAdjf/pYFLNqvJuURqKSVmCKPd/xy/XFYs9lHPC4iYjC0Wk5ttyGMwNkrpkycNqvyD9XlWMwLMDuFuyRdF89YzAtWH6yr7O/dlKMYbYPU7Wsvgpq7NWO7ZK4C/mh9peQf6g/VF+/XWd+D8kru9DBTXxp8IZPVmW3GaMIQSyuBnWuxtcPWt0yqbviplMGiCtgp1k5Kv83hl5KCyRbRRxrkNRhavAkgFkC2oFO8KClaXb/pFoBv3c/G0eBonTLnuQb0hnICGEOf2iRwlxEI6AuVJSU+VEAPsUuQWgNci11+AfEXMpTyGYGmIWcXGB8TCPJh0er6TQLQrYPgiQwK4BZUuD1wSBZ3OXVyaujxBu42orMVF3soeg4BsrgMKsXeSafdaHYF9HuHjUsXyFUhpxv0kEeWRSBep3atwlUag8Irg/Ji5a5k8LRHV3UZafI6BXhD7z+Rq1xFbgKA2RWp2EnSrTKn0WB2yH9pjlL53UY0ElGQQeCICCD0KgCgYnCsMh4sPpdyqIOamkIEWRIgEsjQMzsBqt2ISWc+saF00snuJZSUlkueRaiAkbIyC4RvJSKiHfPfvETcoWWbbfgt98dm2AAOABZviRWDy/MAKIH+kygiaJEfA8CCFJMnzVrkaDfTuLGuPId5RkiLoQRoNxLoAJEwZMnk2tpWKR9Ie99kA1zMfGO80mZMpyIowdAHTxwtZ0yGotMapwRPmetcSU1pueTw3cyHM2Z4ReQnEREBJUYoi9O1nkD0HADClsGjY9AAd6vbs6ZwbeNGMbI0jXnQ1PRA9pQAaIM7BKCUlkv8Wuxqt/RI5xdzLDUtZBKj3QQQRVBttukUJS8CEFRADzvAuQ4xO+4onlb72N1of2u5Di06R6mjGyZP+vxcQC9KoumvB9q6BeDZFTANM/JHWYRbQkYMU8JcDpPOLIBUTFrT0OTmBGVYAm6eY1aKeOi5Vm06PJwYs9LxJUEhEWGWX9QHg7mzey72p9YQr9llTqLbjvJtWYrHdjv9DhJTZO4wAYngr67mHVQ6BvXhtwJGyqGKVtdvgshL6cRCMnjqem/vGjZishRPMF7cQYBBKi835Gs+oOZUwK6bHDw+jfi6Vm00U2LOQQDxMFSrMdvZZxYCwOyKweXPwZcqcYdJ/cUkNloJJnCLNjpd8XXVU4KnUgXsVABlaJVJeTlQWVLiY6Y/MsAmkVaGQKc7g96fDa5ev30wo5NDBzi38TB1R19p17rOz6QkccETEoCMQHzCf95WUpIFdxRcCg5DsMqgaAG0hcjtOYoP7jSiKYFdB4jAYSMgkof6KodhDDgCZFEZVHD9+i4iejTguKQJq/gggLuMmCxFkzoocl/KtBwy7aaoAnZ1ceFZmYq/2aKNzZTQFh86wMRdxrwXrGpc6o6d1MMecK5dbADAMB5u07qbKXHBE9e0VC22sXOUuqy6pODLVAFbylJRy0EEGxOgG0rzDwoo/CUqEAM3gp2gZQTwOhN6HyDADFWd7ZAAjmLBk7X1dVrwryzFlMDgicMEBNWhjc4gvnvd5MLjUv7c4PltKAdJWZlFUH/zM48NJyjn1jtY4mPiVq232EY9BbeAesQADgAWuPaxIr6ry4ggseYECCDb6a7q8TGeriwpySenCiXVA2UQ/LaGjXX3Zyk+od0xJVWCpYBOZyIRPDi5trbVLTGTIeK7ITctTG1J4avZik9pT8DF1H5MC52lWIWMebfVEyo7ePXWTsefTt0s+F/XipnwzFqJaF1p8Ee5Sv2sxTY2KLGmuyDeEiwEsaflV2/YMJTnPdTSnBwtJ3eYPmPjE7eYoNq1sTOZj8yOpv19cVmZmucKhxRk/new1ZYGr81i9bNWbWyhJDDZHQFLUcijBdUb1sNVAkMKgERouXUlha9nKT4xGbQc0NOSoV2bpw+qqp+LXvNtUvD5ZGBbV1J4WbqiJ8JGtHbOnRKLNYgChIEwM2aMX1tfP9TWTCKkuMPILPMMJGkSYESwdtjGzlJ8yfrSwqfmxXGY0nSfCGylhf8XYHo8bMTYSQC2XtqNI8BDE9bW16F8aLVbwky6Xr7cyzmKT0tES7S9azr51wdiffbs6urwfEDNRWKjqsm+egZpwV5XUnh1GtODERFjA8RJADa3SZAA6DTQ0wuq1m9MhK+eEOm9wD0AYX1zWMRwEtV5xDRdpqILj6Do8x/m54+aC+hFqTzdbtctbk6NALuhNPidTMVJBbaYdstUzFHgrmDV+g2x60EJMe8S8v7lTrh4XUnBo7mW9fkW29hEycPUIrCzFVtdxnzYynTJ9LV1a1Ot9vrVHMqt0KDGKYW/z2S+oU0bbZLFjHRoND4iihpp6oZneml1dQecO5JDXnyROP9kgVPD6BHvDzu0afcwOJHVJ/1pulZtbA/zIblG3lhXWni2mxznlF/nMnIZLAL0e8XFY5tKJy3MZr6h1Ta2cUCYNHaLCCRAREJ085Tq6jaUgyhBvJa4wlHAoBycX1PTGBG5LZOZIcnlJxHB6jRGG6LRAaKF60uDPyLAEGAO5AusAvAtAFMF7IbSSSePs8xyP9NZ2908GyUXrTpLsdqhzbJgVd2j813LKoF8n1hHewHAM2bMUJnRzhUBpkNDTgW5SjIGMwQgRzGHtLzQSub6aZUN62Ka7kBJHQhAKHOKkAGgsbTwZgv0UyKobiNJ5RLESGbAWCDRIkfnV9evSnQALNHlVVIO4JDVqyOAuT5Z78mQa0busI3tYzorW+jt9SWFV8W1XRmskX7Fx/XVhCpg1xTnH7qhdNKiLOafRyDcLWKSEGwQgc5WrEIid+VX169aVAYr0dFmTgJm1ovKYBVWNb4eMvKHXMVKJPkCE9Tj12lDNDpd8UMbpxQ+V1cSnDGnArZ7DWnEAW8+oGLV/svy8wPrS4M/SrOsN/1Ms3doY4srkJKNbgOYAJPVok2lPztyy3xADVWBctKalLualmMC2dG0VV6ikpDIkM+V2wd6BYDJYlbdRkJC5nc7Qua3h6xfvx0AFpXBml0BTUkUBPokQCt3InnGNR8vVoRb05kPadUGBkg6038nU1J7iaxOg9nF1XUVvaKpKcD1Mll0TWnBSemkKqIi2jgHmrQaQwRaEVSWYnRq0yCQX29tCz90xObNnb2AZ4aLj+dqZ4ZjKgsANE4unK0YP/Ayf1qLoMuIDUquKGQ/52KPstjaatu/mlzd+N1FZbDmJEk6J6k2LbYxtSXB20Zb6ofNtrGZkjsaKIBARPuYrQATOrWpAuQPkQg9VlRf3+L+DqMchAU9jJxM1rIAtLgM3JspN00JnqpBNynQOR4itBljKEnNx52FYIYi1Wnk3XZP+nEHH7xaJ9O+U5Ixb0zCSmNJYUWG4hNbjdE8DC6GCiAiMAEm5SdCpzHrieRRw+qR/DXrKntr8pibkSgmiJnwY8pAvUFWWTIqK8BZFyjIlxToJIsI7caIS+uwOAMLJIqku00wa2pV/ceCoa+XHDaAi2kDAsyG4uIgKf0uiEZFRISGSbJZAAOBeJlUOhHajA4z6CUmeiJq2S8HVzt+XlzAlEGhAjIPzmcwQNgbYLMrIL19GQFow+TCY8E0VyCfSWcuMADajRESmGSpcR3gi9rZiq3ttr6iuKbhsWQyJZMWcL39ueriwrOzPbSw24itkdx+w+5MTSayMpw27wgZsxmQVw3ouTTo10dXrd/Qb7CiDLQYwGxnZJLMAzBvYECkBQCNKQPNRhkWowL9BW8kPz/QFLCOAuFMAzmbQYenESEkgogR7Y4eHVbtJozAHm2xtTWq7y2uabg+GcGWtIAD3LKhCtjrJhf+IM/Dt29PslrLfQJebF4ekUojckrWtWkHsAosr0OwPBrlD1fU1a0fjDxRfTCYy16aKiSzCHSSAMd4iQoDTAgbQUhEINDuIMRhV7ZmBDpHserQZkl19aRTZ5dXSJL6y8mtMWJSqr608PFcxZcPhyDK3rUeDAiwAOVnhoeAqACdRndDUEfAWiFaSyRV0NxIipoiNrVYtt1uRaPhpokTozNXrtSA05Z79oYStU0pb4fqToeNHC/M6IhwPgNFJDQFZKYCVOIhGhNgggjQLYKwiEBEg4hpGNeGGsCkEbEWaQh7cEzR6vrNksQtMijJGTRe+pUd7Xwtg/mEVj08NV1/4CPAiIiAiBXAXiJ4yIm5iwBRCLqNwEC6RSgEoAuEbog4ZiIRA+IFEIAgIEQZfiLy7vSMiABRESFx5py7Qw95BOyhsYjIAkJtRk6aUl2/KlnybcMScL2DKNXFxWMDln7DS1TaoUUzjayWdq7p6XxEhEAQAhPADIBde496HZr0+hhxuuuamAnrPgMEkiS6KrM/90sBxkukOow5b3J1w78XAdYcJPf1qWFxCLGC0+rig0rTLet1Ao3rFtF0gPSRjF1b6m/iFyGeTokdJh0I+8GAzmC2dtj6S5NrGv48XO4qDqeonxO5nBycma7oNQFlhZO4/Cu1BtUU1znMVrPR3y2uavjVcLoYPGyYNVbkXFLTsLJL6DwGQj4iNqmuWgce2BRb24390+EGtmFpfsQ2uLo4eGqGxc8ZIJDSdAcO2HIVW9uNvmNSZcPNUgYLw6xIfNgxKVXAXlQGq6S24dUO25zLgg4/EUuqq9aI99lyFFs7bHPbpMqGmxcNQ7ANawc7pulqphScmC7qGWKMCo3A6OWBvozbvDWTmVuM+WFRVf3trj9vMAyvPw1bMyym6SZXNr4RAk4xIuszFSsjqa5aIwhsxgLBz8Sttv5aUVX97W67wmEJtmGt4XqZGxYB9popwaIsoWfSmA/doYd3RUpqOeVaASZFQHe3oSsKq9ctSNb6yAMKcC7oFAH6g2AwN8/HT2YqOtO9/q8oNU54+J2nwM5UbEWMNLVBXzq1qvH1kdITdERE9gjQ8wF1WEPDjj9W1Z3TqvW92cwWu2ZJioWHT3Ak1mo+YsyKNpgTp1Y1vr5oBDXgHVHS/xaA57l3yupLCr/iI/yeiDxdydnCLbV28tcYoBzF1KHN400dketmNTWFkr028oAGnCslCW6Xqbri4Ak+ix4JEE9u0Sbpe3EcyCZkgMkSETtM+G5hZf3v3LPkkdbzc8Qli8lNkC4qgzWptmFpkwkf12nM0zmKLQUikVS+Lom0mgigcy22jEhlJ8wphZX1vxOnNd+InEJ7IDQv1QCwfkrweiX0Cy9zRntK2yWFVvMyWX4idIl5pLlbbjqsoWHHSIhEHrCA62ViknPFJ/+QdEvdk8Zc1qYNtHPLOZUoH9rzMAIgl5lDRjbZkG8Gq+qf2llApgA3zFevu1K0vrTwmwq4xcec2aaNBoEoVYs52EATiGg/s2URISLyZJT0dwrXNm50O5mZ4dw4NwW4/g+d4UYxa6dOmuo3cqeP+fyoCLqHQYPTYeurCbTV0zC3UgjfO6iy/l8HilYb0UGTvUgXQ4AsAqzitXVrJ1bVXxDSulwEa3IttiwiEhFbDgBJO0QCTgsgOYqVAjpD2vy0lTtmHVRZ/6/5PYERfYDx4AHLDPFRU+8dNi59TLf/Bhb6Vpqi0Y5/JzaIUhrvEwINAGUyc0QEIvJEN9PPitfWrT0QtVoKcH2ZI374lSUH5aeT55uAfClDcUYKePu4lwItBM5iJi0CLXjBkL79oMrGN4CRMeQkBbj9AzpCOTg2GbO6+KDSNMv6ugiuzFCc0WEEUcfH41Rwpf9gCBFZmcyIikBDXhJjfn1QdePLwK6TeA7klQLcHoBXXxos9oCuE8JVGcRjukXQJRK7GsJ0YJvkRgTiYVIZTOjQxjDRM5rkDwVr6xftbLanuCsFuL35d3GHvqaoaFzAYy4X0NU+ooMZQKeJm5sHktYzImJApNKZyANCpzHNDPqbFvlzfnX9qpjgWgDw3NQt/BTg9mXdAvC8clBM462YOdNzUOvWMwzzVSJyRqbi9IgIQkYgIjYRjbgekM5wEjEgYh8RB5jQ5TSnfZuFHmePLBi3un5TTFAtACgFtBTg/mdTc3EZVO+So6YpwSIRulggnzGgY7OYKQJxmNGt1xyOHY536git/ETkJ0IUQERMLQmeY4W/jV9Tvzz+nXIoLEj5aCnADYaP15M8jzPX+tLCIwCcA9C5InJkpmKvAOgSQSTWw9+BX6zMLJkmz8Y7NYOILYBjMw9CRqBFqgn0EgyeRSj8+kFNTaHYd1NRxxTghtTcnF0G3pnhNk+eXKJZn2ogpxngWA9RfhoTjABhB4BOQninVuTuYdAgA8ttpQ4BQCAoLxF8RLDcoSIhY9oIWCVEi3xkXm7V3pVTqqvDvbXZggVAymxMAS6hQZbF/YFvxpgME00/WEhOMILjBDhMgOJ0Zsvj/mLUGbQB250NIL0a5PRuY76n8+rdAn2ndugEgBggywWVx61fMwKERGCL2cygj0D0FoxZ5rWwcuyahqbez3c1WWwSakqbpQCXfODbWgHZWQtIGayGDQWFTDQNRIdqI9OJUAogH6A8BaQ5k28o9ixnvpX0Hdyx8wHGPrFoDbnHaiCwBQgbYxNhOwk1gVDHoI9FzEdasDqDvNWjq6vb+vNZt1ZAylMgSwFuOPl8CwAuLysjVFTI7sqZNs8YkxEO+8Yr9kyIig4qIF8I4wQYB0EuiLIhkiZAGoE8IGEAJAIDIpuALhHpIlAbCC0E2QrBJjA2EmiDkF7PZDbmr9nYvDshgbIyxtgKmbcAcmsq+DFo6/8DnuPOxWz6kLsAAAAASUVORK5CYII=">
+      <div>
+        <div id="title">Underground Status</div>
+        <div id="subtitle">Delays filtered to your commute routes</div>
+      </div>
+    </div>
+    <div id="when">
+      <div id="clock">--:--</div>
+      <div id="date"></div>
+    </div>
+  </div>
+
+  <div id="fetch-error"></div>
+
+  <div id="train-track">
+    <!-- Flat two-car train, nose to the left (it travels right to left). -->
+    <div id="train-img"><svg viewBox="0 0 200 26" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="#e3e7ec">
+        <path d="M14 2 H96 a3 3 0 0 1 3 3 V21 a2 2 0 0 1 -2 2 H4 a2 2 0 0 1 -2 -2 V13 C2 6 7 2 14 2 Z"/>
+        <rect x="103" y="2" width="95" height="21" rx="3"/>
+      </g>
+      <rect x="99" y="13" width="4" height="3" fill="#8b949e"/>
+      <g fill="#1d2329">
+        <path d="M5 12 C6 8 9 6.5 13 6.5 V12 Z"/>
+        <rect x="18" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="35" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="56" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="77" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="108" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="129" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="150" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="171" y="6.5" width="13" height="6" rx="1"/>
+        <rect x="188" y="6.5" width="6" height="6" rx="1"/>
+      </g>
+      <g fill="#DC241F">
+        <rect x="2.5" y="16" width="96" height="2.5"/>
+        <rect x="103" y="16" width="95" height="2.5"/>
+      </g>
+      <g fill="#2a3139">
+        <rect x="10" y="23" width="20" height="3" rx="1"/>
+        <rect x="70" y="23" width="20" height="3" rx="1"/>
+        <rect x="110" y="23" width="20" height="3" rx="1"/>
+        <rect x="170" y="23" width="20" height="3" rx="1"/>
+      </g>
+    </svg></div>
+  </div>
+
+  <div id="loading">Loading service status&hellip;</div>
+  <div id="board"></div>
+  <div id="debug"></div>
+
+<script>
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CONFIG
+     TfL Unified API ("500 Requests per min" product). The secondary key is
+     an automatic fallback if the primary fails. Thameslink isn't run by
+     TfL, but TfL's API publishes its status under the national-rail mode;
+     it's fetched separately so a Thameslink outage can't blank the board.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const CONFIG = {
+    APP_KEY:             'YOUR_TFL_PRIMARY_KEY',
+    APP_KEY_SECONDARY:   'YOUR_TFL_SECONDARY_KEY',
+    TFL_LINES:           ['northern', 'circle', 'hammersmith-city', 'district', 'piccadilly', 'elizabeth'],
+    RAIL_LINES:          ['thameslink'],
+    REFRESH_MS:          60 * 1000,            // status check once a minute
+    SEQUENCE_REFRESH_MS: 24 * 60 * 60 * 1000,  // station order, once a day
+    SCROLL_PX_PER_SEC:   55,
+    // When a line has a delay that's NOT on your route, it shows Good
+    // Service with a small grey note underneath. Set false to hide the note.
+    SHOW_HIDDEN_DELAY_NOTE: true,
+  };
+
+  // Two columns: four on the left, three on the right.
+  const COLUMNS = [
+    ['northern', 'circle', 'hammersmith-city', 'district'],
+    ['piccadilly', 'elizabeth', 'thameslink'],
+  ];
+
+  const LINE_STYLE = {
+    'northern':         { name: 'Northern',           bg: '#3a3a3a', fg: '#fff' }, // true black vanishes on this background
+    'circle':           { name: 'Circle',             bg: '#FFD300', fg: '#111' },
+    'hammersmith-city': { name: 'Hammersmith & City', bg: '#F3A9BB', fg: '#111' },
+    'district':         { name: 'District',           bg: '#00782A', fg: '#fff' },
+    'piccadilly':       { name: 'Piccadilly',         bg: '#003688', fg: '#fff' },
+    'elizabeth':        { name: 'Elizabeth line',     bg: '#6950A1', fg: '#fff' },
+    'thameslink':       { name: 'Thameslink',         bg: '#E9438D', fg: '#fff' },
+  };
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     YOUR ROUTES
+     Each leg is one train ride: the line(s) and every station you pass,
+     in order. The first and last stations are where you get on, off or
+     change. A line's delay is only shown if it touches one of these legs.
+       St Bart's:              Northern to Kentish Town, Thameslink to City Thameslink
+       Royal London:           Northern to Tottenham Ct Rd, Elizabeth to Whitechapel
+                               or Northern to King's Cross, H&C to Whitechapel
+       Charing Cross Hospital: Northern to Leicester Sq, Piccadilly to Hammersmith
+                               or Northern to Embankment, District to Barons Court
+       Hammersmith Hospital:   Northern to King's Cross, Circle or H&C to Wood Lane
+     ═══════════════════════════════════════════════════════════════════════ */
+  const FINCHLEY_TO_KENTISH_TOWN = [
+    'Finchley Central', 'East Finchley', 'Highgate', 'Archway', 'Tufnell Park', 'Kentish Town',
+  ];
+  const LEGS = {
+    northernToKentishTown: {
+      lines: ['northern'],
+      stations: FINCHLEY_TO_KENTISH_TOWN,
+    },
+    northernToLeicesterSq: {     // Charing Cross branch (also covers Tottenham Court Road)
+      lines: ['northern'],
+      stations: [...FINCHLEY_TO_KENTISH_TOWN, 'Camden Town', 'Mornington Crescent', 'Euston',
+                 'Warren Street', 'Goodge Street', 'Tottenham Court Road', 'Leicester Square'],
+    },
+    northernToTottenhamCtRd: {   // Charing Cross branch, getting off at Tottenham Court Road
+      lines: ['northern'],
+      stations: [...FINCHLEY_TO_KENTISH_TOWN, 'Camden Town', 'Mornington Crescent', 'Euston',
+                 'Warren Street', 'Goodge Street', 'Tottenham Court Road'],
+    },
+    northernToEmbankment: {      // Charing Cross branch, all the way to Embankment
+      lines: ['northern'],
+      stations: [...FINCHLEY_TO_KENTISH_TOWN, 'Camden Town', 'Mornington Crescent', 'Euston',
+                 'Warren Street', 'Goodge Street', 'Tottenham Court Road', 'Leicester Square',
+                 'Charing Cross', 'Embankment'],
+    },
+    northernToKingsCross: {      // Bank branch
+      lines: ['northern'],
+      stations: [...FINCHLEY_TO_KENTISH_TOWN, 'Camden Town', 'Euston', "King's Cross St Pancras"],
+    },
+    thameslinkToCity: {
+      lines: ['thameslink'],
+      stations: ['Kentish Town', 'St Pancras', 'Farringdon', 'City Thameslink'],
+    },
+    elizabethToWhitechapel: {
+      lines: ['elizabeth'],
+      stations: ['Tottenham Court Road', 'Farringdon', 'Liverpool Street', 'Whitechapel'],
+    },
+    hcToWhitechapel: {
+      lines: ['hammersmith-city'],
+      stations: ["King's Cross St Pancras", 'Farringdon', 'Barbican', 'Moorgate',
+                 'Liverpool Street', 'Aldgate East', 'Whitechapel'],
+    },
+    piccadillyToHammersmith: {
+      lines: ['piccadilly'],
+      stations: ['Leicester Square', 'Piccadilly Circus', 'Green Park', 'Hyde Park Corner',
+                 'Knightsbridge', 'South Kensington', 'Gloucester Road', "Earl's Court",
+                 'Barons Court', 'Hammersmith'],
+    },
+    districtToBaronsCourt: {
+      lines: ['district'],
+      stations: ['Embankment', 'Westminster', "St James's Park", 'Victoria', 'Sloane Square',
+                 'South Kensington', 'Gloucester Road', "Earl's Court", 'West Kensington',
+                 'Barons Court'],
+    },
+    circleOrHcToWoodLane: {
+      lines: ['circle', 'hammersmith-city'],
+      stations: ["King's Cross St Pancras", 'Euston Square', 'Great Portland Street', 'Baker Street',
+                 'Edgware Road', 'Paddington', 'Royal Oak', 'Westbourne Park', 'Ladbroke Grove',
+                 'Latimer Road', 'Wood Lane'],
+    },
+  };
+
+  /* LOGIC-START ═══════════════════════════════════════════════════════════
+     DISRUPTION MATCHING — pure functions, no page access.
+
+     For each disruption, decide whether it touches one of your legs:
+       1. "between A and B" in the message: work out every station between
+          A and B using TfL's real station order for the line (honouring
+          "via Bank" / "via Charing Cross"), and count it only if you'd
+          travel along part of that stretch.
+       2. Otherwise, if TfL lists affected stations: count it if one is
+          where you get on, off or change, or you'd travel between two.
+       3. Otherwise, a station closure ("X station is closed"): count it
+          only if it's where you get on, off or change. Trains still run
+          through a closed station.
+       4. Otherwise (no location, e.g. "severe delays", or only where the
+          cause is, like "signal failure at X"): assume it affects you.
+     Anything ambiguous falls through to "affects you", so the worst case
+     is an unnecessary warning, never a missed one.
+     ═══════════════════════════════════════════════════════════════════════ */
+  function classifyStatus(description) {
+    const d = String(description || '').toLowerCase();
+    if (d === 'good service') return 'good';
+    if (['severe delays', 'suspended', 'closed', 'closure', 'not running']
+        .some(k => d.includes(k))) return 'bad';
+    if (['minor delays', 'reduced service', 'bus service', 'change of frequency',
+         'diverted', 'issues reported'].some(k => d.includes(k))) return 'warn';
+    return 'info'; // Special Service, Information, No Step Free Access, etc.
+  }
+
+  // Turns any station name or message into a comparable form:
+  // "King's Cross St. Pancras Underground Station" -> "kings cross st pancras".
+  function norm(s) {
+    return String(s || '').toLowerCase()
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/-underground/g, ' ')
+      .replace(/&/g, ' and ')
+      .replace(/\b(underground|rail|dlr) station\b/g, ' ')
+      .replace(/\bstation\b/g, ' ')
+      .replace(/['’.]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Exact match, or one name is a whole-word part of the other
+  // ("st pancras" vs "london st pancras international").
+  function sameStation(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return (' ' + a + ' ').includes(' ' + b + ' ') || (' ' + b + ' ').includes(' ' + a + ' ');
+  }
+
+  // Finds every station name in the (normalised) text, longest names
+  // first so "edgware road" isn't also counted as "edgware".
+  function findMentions(text, names) {
+    let masked = ' ' + text + ' ';
+    const found = [];
+    [...new Set(names)].filter(Boolean).sort((a, b) => b.length - a.length).forEach(name => {
+      const needle = ' ' + name + ' ';
+      let i = masked.indexOf(needle);
+      while (i !== -1) {
+        found.push({ name, index: i }); // index = where the name starts in text
+        masked = masked.slice(0, i + 1) + ' '.repeat(name.length) + masked.slice(i + 1 + name.length);
+        i = masked.indexOf(needle, i + 1);
+      }
+    });
+    return found.sort((a, b) => a.index - b.index);
+  }
+
+  // Every adjacent pair of stations covered by each "between A and B".
+  function rangesFromText(text, mentions, sequences) {
+    const re = /\bbetween\b/g;
+    const edges = [];
+    let found = false, unresolved = false, m;
+    while ((m = re.exec(text))) {
+      found = true;
+      const after = mentions.filter(x => x.index > m.index && x.index - m.index < 200);
+      if (after.length < 2 || !sequences || !sequences.length) { unresolved = true; continue; }
+      const [a, b] = after;
+      const tail = text.slice(b.index + b.name.length, b.index + b.name.length + 8);
+      const via = /^\s+via\s/.test(tail)
+        ? after.find(x => x.index > b.index && x.index - b.index < 40) : null;
+      let matched = false;
+      for (const seq of sequences) {
+        const ia = seq.findIndex(s => sameStation(s, a.name));
+        const ib = seq.findIndex(s => sameStation(s, b.name));
+        if (ia < 0 || ib < 0 || ia === ib) continue;
+        const span = seq.slice(Math.min(ia, ib), Math.max(ia, ib) + 1);
+        if (via && !span.some(s => sameStation(s, via.name))) continue;
+        matched = true;
+        for (let i = 0; i < span.length - 1; i++) edges.push([span[i], span[i + 1]]);
+      }
+      if (!matched) unresolved = true;
+    }
+    return found ? { edges, unresolved } : null;
+  }
+
+  function legEndpoints(legStations) {
+    return [legStations[0], legStations[legStations.length - 1]];
+  }
+  function legUsesEdge(legStations, [x, y]) {
+    for (let i = 0; i < legStations.length - 1; i++) {
+      const a = legStations[i], b = legStations[i + 1];
+      if ((sameStation(a, x) && sameStation(b, y)) || (sameStation(a, y) && sameStation(b, x))) return true;
+    }
+    return false;
+  }
+
+  // legStations: normalised station names for the leg, in travel order.
+  // lineInfo: { sequences, stationNames } from TfL, or null if unavailable.
+  function assessStatus(status, legStations, lineInfo) {
+    const text = norm(status.reason);
+    if (!text) return { affects: true, why: 'no reason given, assuming whole line' };
+
+    const names = lineInfo ? lineInfo.stationNames : legStations;
+    const mentions = findMentions(text, names);
+
+    const ranges = rangesFromText(text, mentions, lineInfo && lineInfo.sequences);
+    if (ranges) {
+      if (ranges.edges.some(e => legUsesEdge(legStations, e)))
+        return { affects: true, why: '"between" range overlaps your route' };
+      if (ranges.unresolved)
+        return { affects: true, why: 'could not work out the "between" range, assuming affected' };
+      return { affects: false, why: '"between" range is off your route' };
+    }
+
+    const stops = ((status.disruption && status.disruption.affectedStops) || [])
+      .map(s => norm(s.commonName || s.name)).filter(Boolean);
+    if (stops.length) {
+      const hit = s => stops.some(x => sameStation(x, s));
+      const endpointHit = legEndpoints(legStations).some(hit);
+      let travelHit = false;
+      for (let i = 0; i < legStations.length - 1; i++) {
+        if (hit(legStations[i]) && hit(legStations[i + 1])) travelHit = true;
+      }
+      return endpointHit || travelHit
+        ? { affects: true, why: 'TfL lists affected stations on your route' }
+        : { affects: false, why: 'TfL lists affected stations, none on your route' };
+    }
+
+    if (/\b(closed|not stopping|not stop|will not call|no service to)\b/.test(text) && mentions.length) {
+      const hit = mentions.some(x => legEndpoints(legStations).some(e => sameStation(e, x.name)));
+      return hit
+        ? { affects: true, why: 'a station you use is closed' }
+        : { affects: false, why: 'closed station is not one you get on, off or change at' };
+    }
+
+    return { affects: true, why: 'no specific location given, assuming whole line' };
+  }
+
+  // Strips TfL's "Northern Line: " prefix and keeps the first sentence
+  // (the cause); the follow-on sentences are advice boilerplate.
+  function conciseReason(text) {
+    let t = String(text || '').replace(/^[^:]{2,60}:\s*/, '').replace(/\bSt\./g, 'St');
+    const first = t.match(/^.+?[.!?](?=\s+[A-Z]|\s*$)/);
+    return (first ? first[0] : t).trim();
+  }
+
+  // Splits each line's delays into ones on your routes (shown) and ones
+  // elsewhere on the line (hidden).
+  // lines: TfL line objects; lineData: lineId -> { sequences, stationNames }
+  function assessLines(lines, lineData) {
+    const log = [];
+    const byLine = {};
+    for (const line of lines) {
+      const legKeys = Object.keys(LEGS).filter(k => LEGS[k].lines.includes(line.id));
+      const relevant = [], hidden = [];
+      for (const st of (line.lineStatuses || [])) {
+        if (!['warn', 'bad'].includes(classifyStatus(st.statusSeverityDescription))) continue;
+        if (!legKeys.length) { relevant.push(st); continue; } // not on any route: show it, to be safe
+        const verdicts = legKeys.map(k => ({ legKey: k, ...assessStatus(st, LEGS[k].stations.map(norm), lineData[line.id]) }));
+        verdicts.forEach(v => log.push({ lineId: line.id, status: st.statusSeverityDescription, ...v }));
+        (verdicts.some(v => v.affects) ? relevant : hidden).push(st);
+      }
+      byLine[line.id] = { name: line.name, relevant, hidden };
+    }
+    return { byLine, log };
+  }
+  /* LOGIC-END */
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TFL FETCHING
+     ═══════════════════════════════════════════════════════════════════════ */
+  async function fetchTfl(baseUrl) {
+    const keys = [CONFIG.APP_KEY, CONFIG.APP_KEY_SECONDARY];
+    let last = { ok: false, status: null, data: null, networkError: null };
+    for (const key of keys) {
+      try {
+        const sep = baseUrl.includes('?') ? '&' : '?';
+        const res = await fetch(`${baseUrl}${sep}app_key=${key}`);
+        let data = null;
+        try { data = await res.json(); } catch (_) { /* body wasn't JSON */ }
+        if (res.ok) return { ok: true, status: res.status, data };
+        last = { ok: false, status: res.status, data, networkError: null };
+      } catch (e) {
+        last = { ok: false, status: null, data: null, networkError: e };
+      }
+    }
+    return last;
+  }
+  function describeFailure(r) {
+    if (r.networkError) return r.networkError.message;
+    if (r.data && r.data.message) return `HTTP ${r.status}: ${r.data.message}`;
+    return `HTTP ${r.status || 'no response'}`;
+  }
+
+  // TfL's station order for each line, so "between A and B" can be
+  // expanded into the actual stations in between. Fetched once a day;
+  // if it fails, the matching just becomes more cautious (assumes affected).
+  const lineData = {};
+  async function loadSequences() {
+    const ids = [...CONFIG.TFL_LINES, ...CONFIG.RAIL_LINES];
+    await Promise.all(ids.map(async id => {
+      const r = await fetchTfl(`https://api.tfl.gov.uk/Line/${id}/Route/Sequence/outbound`);
+      if (!r.ok || !r.data) return; // keep whatever we had before
+      const names = {};
+      (r.data.stations || []).forEach(s => { names[s.id] = norm(s.name); });
+      (r.data.stopPointSequences || []).forEach(seq => (seq.stopPoint || []).forEach(sp => {
+        names[sp.id] = norm(sp.name);
+        if (sp.stationId && !names[sp.stationId]) names[sp.stationId] = norm(sp.name);
+      }));
+      const sequences = (r.data.orderedLineRoutes || [])
+        .map(o => (o.naptanIds || []).map(n => names[n]).filter(Boolean))
+        .filter(s => s.length > 1);
+      if (sequences.length) lineData[id] = { sequences, stationNames: [...new Set(sequences.flat())] };
+    }));
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     REFRESH + RENDER
+     ═══════════════════════════════════════════════════════════════════════ */
+  let hasLoadedOnce = false;
+  let commuteHasDisruption = false; // read by the train animation
+  let lastUpdated = null;
+  let lastSignature = '';
+
+  async function refresh() {
+    const [tube, rail] = await Promise.all([
+      fetchTfl(`https://api.tfl.gov.uk/Line/${CONFIG.TFL_LINES.join(',')}/Status?detail=true`),
+      fetchTfl(`https://api.tfl.gov.uk/Line/${CONFIG.RAIL_LINES.join(',')}/Status?detail=true`),
+    ]);
+    const errorEl = document.getElementById('fetch-error');
+
+    if (!tube.ok || !Array.isArray(tube.data) || tube.data.length === 0) {
+      const detail = tube.ok ? 'API responded but returned no line data' : describeFailure(tube);
+      if (hasLoadedOnce) {
+        errorEl.textContent = `Update failed: ${detail}`;
+        errorEl.style.display = 'block';
+      } else {
+        const loading = document.getElementById('loading');
+        loading.textContent = `Fetch failed: ${detail}`;
+        loading.classList.add('failed');
+      }
+      return;
+    }
+
+    const railOk = rail.ok && Array.isArray(rail.data);
+    const lines = [...tube.data, ...(railOk ? rail.data : [])];
+    if (railOk) {
+      errorEl.style.display = 'none';
+    } else {
+      errorEl.textContent = `Thameslink status unavailable: ${describeFailure(rail)}`;
+      errorEl.style.display = 'block';
+    }
+
+    const { byLine, log } = assessLines(lines, lineData);
+    hasLoadedOnce = true;
+    lastUpdated = new Date();
+    commuteHasDisruption = Object.values(byLine).some(l => l.relevant.length > 0);
+    document.getElementById('train-track').classList.toggle('delayed', commuteHasDisruption);
+    render(byLine);
+    renderDebug(lines, log);
+  }
+
+  const STATUS_COLORS = { good: '#34c37a', warn: '#f2b200', bad: '#ff5a4f', info: '#9aa5ad' };
+
+  // Small glyphs for the status icon: tick, exclamation, cross, dash.
+  const STATUS_ICONS = {
+    good: '<path d="M2.5 6.5 L5 9 L9.5 3.5" fill="none" stroke="#0a0c0f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    warn: '<path d="M6 2.5 V7" stroke="#0a0c0f" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="9.6" r="1.1" fill="#0a0c0f"/>',
+    bad:  '<path d="M3.2 3.2 L8.8 8.8 M8.8 3.2 L3.2 8.8" stroke="#0a0c0f" stroke-width="2" stroke-linecap="round"/>',
+    info: '<path d="M3 6 H9" stroke="#0a0c0f" stroke-width="2" stroke-linecap="round"/>',
+  };
+
+  function el(tag, className, text) {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text != null) e.textContent = text; // textContent, so API text can't inject HTML
+    return e;
+  }
+
+  function statusIcon(kind) {
+    const wrap = el('div', 'status-icon');
+    wrap.style.background = STATUS_COLORS[kind];
+    // Fixed, built-in markup only; no API text goes in here.
+    wrap.innerHTML = `<svg viewBox="0 0 12 12">${STATUS_ICONS[kind]}</svg>`;
+    return wrap;
+  }
+
+  function formatTime(d) {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(d);
+  }
+
+  function render(byLine) {
+    const board = document.getElementById('board');
+    board.replaceChildren();
+    const marquees = [];
+    const affectedNames = [];
+    let worstOverall = 'good';
+
+    for (const ids of COLUMNS) {
+      const col = el('div', 'col');
+      for (const id of ids) {
+        const style = LINE_STYLE[id];
+        const info = byLine[id];
+        let statusText, kind, reasonText = '', isNote = false;
+
+        if (!info) {
+          statusText = 'Status unavailable';
+          kind = 'info';
+        } else if (info.relevant.length) {
+          kind = info.relevant.some(s => classifyStatus(s.statusSeverityDescription) === 'bad') ? 'bad' : 'warn';
+          statusText = [...new Set(info.relevant.map(s => s.statusSeverityDescription))].join(' / ');
+          reasonText = [...new Set(info.relevant.map(s => s.reason ? conciseReason(s.reason) : s.statusSeverityDescription))].join('   •   ');
+          affectedNames.push(style.name);
+          if (kind === 'bad' || worstOverall === 'good') worstOverall = kind;
+        } else {
+          statusText = 'Good Service';
+          kind = 'good';
+          if (info.hidden.length && CONFIG.SHOW_HIDDEN_DELAY_NOTE) {
+            const descs = [...new Set(info.hidden.map(s => s.statusSeverityDescription))].join(' / ');
+            reasonText = `${descs} elsewhere on the line, not on your route`;
+            isNote = true;
+          }
+        }
+
+        const card = el('div', 'card' + (kind === 'warn' ? ' is-warn' : kind === 'bad' ? ' is-bad' : ''));
+        const badge = el('div', 'line-badge', (info && info.name) || style.name);
+        badge.style.background = style.bg;
+        badge.style.color = style.fg;
+
+        const body = el('div', 'line-body');
+        const statusRow = el('div', 'line-status-row');
+        const statusWrap = el('div', 'line-status scroll-wrap');
+        const statusInner = el('div');
+        statusWrap.style.color = STATUS_COLORS[kind];
+        statusWrap.append(statusInner);
+        statusRow.append(statusIcon(kind), statusWrap);
+
+        const reasonWrap = el('div', 'line-reason-wrap scroll-wrap');
+        const reasonInner = el('div', 'line-reason' + (isNote ? ' note' : ''));
+        reasonWrap.append(reasonInner);
+
+        body.append(statusRow, reasonWrap);
+        card.append(badge, body);
+        col.append(card);
+        marquees.push({ wrap: statusWrap, inner: statusInner, text: statusText });
+        if (reasonText) marquees.push({ wrap: reasonWrap, inner: reasonInner, text: reasonText });
+      }
+      board.append(col);
+    }
+
+    // Fourth slot in the shorter column: an at-a-glance commute summary.
+    const shortest = [...board.children].sort((a, b) => a.children.length - b.children.length)[0];
+    shortest.append(renderSummary(worstOverall, affectedNames));
+
+    document.getElementById('loading').style.display = 'none';
+    board.style.display = 'flex';
+    // Crossfade only when something actually changed, not on every
+    // once-a-minute refresh.
+    const signature = JSON.stringify(Object.entries(byLine).map(([id, l]) =>
+      [id, l.relevant.map(s => s.statusSeverityDescription + s.reason), l.hidden.length]));
+    if (signature !== lastSignature) {
+      board.classList.remove('fade-in');
+      void board.offsetWidth; // restart the crossfade
+      board.classList.add('fade-in');
+      lastSignature = signature;
+    }
+    requestAnimationFrame(() => marquees.forEach(m => applyMarquee(m.wrap, m.inner, m.text)));
+  }
+
+  function renderSummary(worst, affectedNames) {
+    const card = el('div', 'card summary');
+    card.style.borderLeftColor = STATUS_COLORS[worst];
+    const headline = !affectedNames.length ? 'All routes clear'
+      : affectedNames.length <= 2 ? `Delays: ${affectedNames.join(', ')}`
+      : `Delays on ${affectedNames.length} of your lines`;
+    const head = el('div', 'summary-headline scroll-wrap');
+    const headInner = el('div');
+    head.style.color = STATUS_COLORS[worst];
+    head.append(headInner);
+    card.append(
+      el('div', 'summary-label', 'Your commute'),
+      head,
+      el('div', 'summary-meta', `Updated ${formatTime(lastUpdated)} · checks every minute`),
+    );
+    requestAnimationFrame(() => applyMarquee(head, headInner, headline));
+    return card;
+  }
+
+  // Scrolls the text only if it doesn't fit, looping seamlessly.
+  function applyMarquee(wrap, inner, text) {
+    inner.classList.remove('scrolling');
+    inner.textContent = text;
+    if (inner.scrollWidth <= wrap.clientWidth) return;
+    inner.replaceChildren(el('span', null, text), el('span', null, text));
+    inner.style.animationDuration = `${(inner.scrollWidth / 2) / CONFIG.SCROLL_PX_PER_SEC}s`;
+    inner.classList.add('scrolling');
+  }
+
+  function renderDebug(lines, log) {
+    if (!/[?&]debug\b/.test(location.search)) return;
+    const out = [];
+    out.push('STATION ORDER LOADED: ' + [...CONFIG.TFL_LINES, ...CONFIG.RAIL_LINES]
+      .map(id => `${id}=${lineData[id] ? 'yes' : 'NO'}`).join('  '));
+    out.push('');
+    for (const line of lines) {
+      for (const s of (line.lineStatuses || [])) {
+        out.push(`${line.id}: ${s.statusSeverityDescription}${s.reason ? ' | ' + s.reason : ''}`);
+      }
+    }
+    out.push('', 'DECISIONS (per leg):');
+    if (!log.length) out.push('  none, no delays on these lines');
+    for (const d of log) {
+      out.push(`  ${d.affects ? 'SHOWN ' : 'hidden'}  [${d.lineId}] ${d.status} on ${d.legKey}: ${d.why}`);
+    }
+    const dbg = document.getElementById('debug');
+    dbg.textContent = out.join('\n');
+    dbg.style.display = 'block';
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TRAIN MOOD — a smooth crossing when nothing affects your routes; a
+     slow crossing with a stall mid-track when something does.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const trainTrackEl = document.getElementById('train-track');
+  const trainImgEl = document.getElementById('train-img');
+  const TRAIN_NORMAL_SECONDS = 10;
+  const TRAIN_DELAYED_LEG_SECONDS = 7;
+  const TRAIN_STALL_MS = 1400;
+  let trainTimer = null;
+
+  function runTrainCrossing() {
+    trainImgEl.style.transition = 'none';
+    trainImgEl.style.left = trainTrackEl.clientWidth + 'px';
+    void trainImgEl.offsetWidth; // force reflow so the transition restarts
+
+    if (!commuteHasDisruption) {
+      trainImgEl.style.transition = `left ${TRAIN_NORMAL_SECONDS}s linear`;
+      requestAnimationFrame(() => { trainImgEl.style.left = (-trainImgEl.offsetWidth) + 'px'; });
+      scheduleNext(TRAIN_NORMAL_SECONDS * 1000 + 600);
+      return;
+    }
+
+    trainImgEl.style.transition = `left ${TRAIN_DELAYED_LEG_SECONDS}s ease-in-out`;
+    requestAnimationFrame(() => { trainImgEl.style.left = Math.round(trainTrackEl.clientWidth * 0.4) + 'px'; });
+    setTimeout(() => {
+      trainImgEl.style.transition = `left ${TRAIN_DELAYED_LEG_SECONDS}s ease-in`;
+      requestAnimationFrame(() => { trainImgEl.style.left = (-trainImgEl.offsetWidth) + 'px'; });
+    }, TRAIN_DELAYED_LEG_SECONDS * 1000 + TRAIN_STALL_MS);
+    scheduleNext(TRAIN_DELAYED_LEG_SECONDS * 2000 + TRAIN_STALL_MS + 600);
+  }
+  function scheduleNext(ms) {
+    clearTimeout(trainTimer);
+    trainTimer = setTimeout(runTrainCrossing, ms);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CLOCK + START
+     ═══════════════════════════════════════════════════════════════════════ */
+  function tickClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = formatTime(now);
+    document.getElementById('date').textContent = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short',
+    }).format(now);
+  }
+
+  loadSequences().finally(refresh);
+  setInterval(refresh, CONFIG.REFRESH_MS);
+  setInterval(loadSequences, CONFIG.SEQUENCE_REFRESH_MS);
+  runTrainCrossing();
+  tickClock();
+  setInterval(tickClock, 1000);
+
+</script>
+</body>
+</html>
