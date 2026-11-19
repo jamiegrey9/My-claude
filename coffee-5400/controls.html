@@ -1,0 +1,70 @@
+<section class="cf-panel" aria-label="Brew simulator">
+  <div class="cf-col cf-col-controls">
+    <div class="cf-group">
+      <h3 class="cf-label">Drink</h3>
+      <div class="cf-drinks">
+        <button type="button" data-drink="espresso">Espresso</button>
+        <button type="button" data-drink="ristretto">Ristretto</button>
+        <button type="button" data-drink="lungo">Lungo</button>
+        <button type="button" data-drink="coffee">Coffee</button>
+        <button type="button" data-drink="americano">Americano</button>
+        <button type="button" data-drink="cappuccino">Cappuccino</button>
+        <button type="button" data-drink="latte">Latte macchiato</button>
+        <button type="button" data-drink="froth">Milk froth</button>
+        <button type="button" data-drink="water">Hot water</button>
+      </div>
+    </div>
+    <div class="cf-row">
+      <div class="cf-group" data-strength-row>
+        <h3 class="cf-label">Strength</h3>
+        <div class="cf-beans" role="group" aria-label="Strength, 1 to 5 beans">
+          <button type="button" data-strength="1" aria-label="1 bean"></button>
+          <button type="button" data-strength="2" aria-label="2 beans"></button>
+          <button type="button" data-strength="3" aria-label="3 beans"></button>
+          <button type="button" data-strength="4" aria-label="4 beans"></button>
+          <button type="button" data-strength="5" aria-label="5 beans"></button>
+        </div>
+      </div>
+      <div class="cf-group">
+        <h3 class="cf-label">Temperature</h3>
+        <div class="cf-seg">
+          <button type="button" data-temp="1">Normal</button>
+          <button type="button" data-temp="2">High</button>
+          <button type="button" data-temp="3">Higher</button>
+        </div>
+      </div>
+    </div>
+    <div class="cf-group">
+      <label class="cf-label" for="cf-grind">Grind setting <span class="cf-out" data-grind-out></span></label>
+      <input id="cf-grind" type="range" min="1" max="12" step="1" value="6">
+    </div>
+    <div class="cf-actions">
+      <button type="button" class="cf-brew" data-brew>Brew</button>
+      <div class="cf-seg cf-speed" role="group" aria-label="Playback speed">
+        <button type="button" data-speed="1">1×</button>
+        <button type="button" data-speed="3">3×</button>
+        <button type="button" data-speed="6">6×</button>
+      </div>
+    </div>
+    <dl class="cf-facts">
+      <div><dt>Dose</dt><dd data-fact="dose"></dd></div>
+      <div><dt>In the cup</dt><dd data-fact="volume"></dd></div>
+      <div><dt>Brew water</dt><dd data-fact="temp"></dd></div>
+      <div><dt>Cycle</dt><dd data-fact="time"></dd></div>
+    </dl>
+  </div>
+  <div class="cf-col cf-col-steps">
+    <h3 class="cf-label">How this cup is made</h3>
+    <ol class="cf-steps" data-stages></ol>
+    <div class="cf-explain" aria-live="polite">
+      <h4 data-explain-title>Ready</h4>
+      <p data-explain></p>
+    </div>
+    <dl class="cf-gauges">
+      <div><dt>Tank</dt><dd data-gauge="tank"></dd></div>
+      <div><dt>Beans</dt><dd data-gauge="beans"></dd></div>
+      <div><dt>Pucks</dt><dd data-gauge="pucks"></dd></div>
+      <div><dt>Cup</dt><dd data-gauge="cup"></dd></div>
+    </dl>
+  </div>
+</section>

@@ -1,0 +1,117 @@
+
+/* Page-level tokens for the simulator, on top of the kit's .iso tokens. */
+.iso{
+  --cf-coffee:#3b2f27;--cf-coffee-top:#5a4536;--cf-crema:#9c7a5b;
+  --cf-milk:#d9d6cf;--cf-foam:#efede8;--cf-water:#2b3236;
+  --cf-grounds:#2c2420;--cf-grounds-top:#3a302a;--cf-bean:#4a3b31;
+  --cf-flow:var(--anatomy-lit);--cf-screen:#060606;--cf-screen-ink:#e9e9e9;--cf-screen-dim:#5e5e5e;
+  --cf-chip:#1a1a1a;--cf-chip-on:#e6e6e6;--cf-chip-on-ink:#111;--cf-line:#262626;
+}
+.iso[data-theme="light"]{
+  --cf-coffee:#5b4637;--cf-coffee-top:#7a5f4b;--cf-crema:#c6a583;
+  --cf-milk:#f3f1ec;--cf-foam:#ffffff;--cf-water:#dfe5e8;
+  --cf-grounds:#6a5545;--cf-grounds-top:#7d6654;--cf-bean:#7a6252;
+  --cf-screen:#141414;--cf-screen-ink:#f2f2f2;--cf-screen-dim:#6a6a6a;
+  --cf-chip:#ffffff;--cf-chip-on:#1c1c1e;--cf-chip-on-ink:#fff;--cf-line:#e2e2df;
+}
+.cf-app{display:grid;gap:20px}
+.cf-app .iso-plate{overflow:hidden}
+
+/* Liquids and grounds: tints of the figure's own inks. */
+.iso-solid.cf-coffee>.iso-fill,.iso-solid.cf-coffee>.iso-shade{fill:var(--cf-coffee)}
+.iso-solid.cf-coffee>.iso-top{fill:var(--cf-coffee-top)}
+.iso-solid.cf-milk>.iso-fill,.iso-solid.cf-milk>.iso-shade{fill:var(--cf-milk)}
+.iso-solid.cf-milk>.iso-top,.iso-solid.cf-foam>.iso-top{fill:var(--cf-foam)}
+.iso-solid.cf-foam>.iso-fill,.iso-solid.cf-foam>.iso-shade{fill:var(--cf-foam)}
+.iso-solid.cf-water>.iso-fill,.iso-solid.cf-water>.iso-shade,.iso-solid.cf-water>.iso-top{fill:var(--cf-water)}
+[data-slot="tank"] .iso-solid.cf-water>*{fill-opacity:.42}
+.iso-solid.cf-grounds>.iso-fill,.iso-solid.cf-grounds>.iso-shade{fill:var(--cf-grounds)}
+.iso-solid.cf-grounds>.iso-top{fill:var(--cf-grounds-top)}
+.iso-solid.cf-beans>.iso-top,.iso-solid.cf-beans>.iso-fill,.iso-solid.cf-beans>.iso-shade{fill:var(--cf-bean)}
+.cf-bean-dots circle{fill:var(--cf-bean);stroke:var(--anatomy-paper);stroke-width:.35}
+.iso-solid.cf-cup>.iso-fill{fill:var(--anatomy-paper)}
+.cf-crema{fill:none;stroke:var(--cf-crema);stroke-width:1.2}
+.cf-water-line,.cf-milk-line{fill:none;stroke:var(--anatomy-hi);stroke-width:.9;stroke-linecap:round}
+
+/* Moving water, coffee, steam and grounds along the hoses. */
+.cf-flow{fill:none;stroke:var(--cf-flow);stroke-width:1.1;stroke-linecap:round;stroke-dasharray:2 5;stroke-dashoffset:calc(var(--o,0px) + var(--flow,0px));opacity:0;transition:opacity .35s var(--anatomy-ease)}
+.cf-flow[data-on]{opacity:1}
+.cf-flow[data-grain]{stroke-dasharray:.5 4;stroke-width:1.8}
+.cf-stream{fill:none;stroke-linecap:round;stroke-dashoffset:var(--flow,0px)}
+.cf-stream-coffee{stroke:var(--cf-coffee-top);stroke-width:1.2}
+.cf-stream-water{stroke:var(--anatomy-mid);stroke-width:1.1;stroke-dasharray:3 2}
+.cf-stream-milk{stroke:var(--cf-foam);stroke-width:2.2;filter:drop-shadow(0 0 .4px var(--anatomy-mid))}
+.cf-stream-grounds{stroke:var(--cf-grounds-top);stroke-width:2;stroke-dasharray:.5 3}
+
+/* The front display. */
+.cf-bezel{fill:var(--anatomy-shade-1);stroke:var(--anatomy-lo);stroke-width:.6px;vector-effect:non-scaling-stroke}
+.cf-screen{fill:var(--cf-screen);stroke:var(--anatomy-mid);stroke-width:.6px;vector-effect:non-scaling-stroke}
+.cf-scr{fill:var(--cf-screen-ink);font-family:ui-sans-serif,system-ui,sans-serif}
+.cf-scr-title{font-size:9.5px;font-weight:600}
+.cf-scr-small{font-size:6.5px;fill:var(--cf-screen-dim)}
+.cf-scr-track{fill:#ffffff1c}
+.cf-scr-bar{fill:var(--cf-screen-ink)}
+.cf-scr-bean{fill:none;stroke:var(--cf-screen-dim);stroke-width:.7}
+.cf-scr-bean.on{fill:var(--cf-screen-ink);stroke:var(--cf-screen-ink)}
+.cf-btn,.cf-key{fill:var(--anatomy-shade-2);stroke:var(--anatomy-mid);stroke-width:.6px;vector-effect:non-scaling-stroke}
+.cf-btn-mark{fill:none;stroke:var(--anatomy-hi);stroke-width:.6px;vector-effect:non-scaling-stroke}
+.cf-brand{font:600 7px ui-sans-serif,system-ui,sans-serif;fill:var(--anatomy-lo);letter-spacing:.6px}
+
+/* Panel */
+.cf-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;padding:22px;border-radius:14px;background:var(--anatomy-card);box-shadow:var(--anatomy-lift)}
+@media (max-width:760px){.cf-panel{grid-template-columns:minmax(0,1fr);padding:16px;gap:22px}}
+.cf-col{display:grid;gap:18px;align-content:start;min-width:0}
+.cf-row{display:flex;flex-wrap:wrap;gap:18px 28px}
+.cf-group{display:grid;gap:8px;min-width:0}
+.cf-group[data-off]{opacity:.35;pointer-events:none}
+.cf-label{margin:0;font:500 11px/1.2 var(--anatomy-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--anatomy-muted)}
+.cf-out{margin-left:6px;text-transform:none;letter-spacing:0;color:var(--anatomy-text)}
+.cf-drinks{display:flex;flex-wrap:wrap;gap:6px}
+.cf-panel button{font:inherit;color:var(--anatomy-strong);background:var(--cf-chip);border:1px solid var(--cf-line);border-radius:999px;padding:6px 12px;cursor:pointer;transition:background .2s,color .2s,border-color .2s}
+.cf-panel button:hover{border-color:var(--anatomy-mid)}
+.cf-panel button:focus-visible,.cf-panel input:focus-visible,.cf-stage:focus-visible{outline:2px solid var(--anatomy-strong);outline-offset:2px}
+.cf-panel button[aria-pressed="true"]{background:var(--cf-chip-on);color:var(--cf-chip-on-ink);border-color:var(--cf-chip-on)}
+.cf-seg{display:inline-flex;border:1px solid var(--cf-line);border-radius:999px;padding:2px;gap:2px;width:max-content}
+.cf-seg button{border:0;padding:5px 11px;font-size:13px}
+.cf-beans{display:flex;gap:6px}
+.cf-beans button{width:20px;height:28px;padding:0;border-radius:50%/50%;transform:rotate(25deg);border:1.5px solid var(--anatomy-mid);background:transparent}
+.cf-beans button[aria-pressed="true"]{background:var(--anatomy-strong);border-color:var(--anatomy-strong)}
+#cf-grind{width:100%;accent-color:var(--anatomy-strong)}
+.cf-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.cf-panel .cf-brew{font-weight:600;padding:9px 26px;background:var(--cf-chip-on);color:var(--cf-chip-on-ink);border-color:var(--cf-chip-on)}
+.cf-facts,.cf-gauges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0}
+.cf-facts div,.cf-gauges div{display:grid;gap:2px;min-width:0}
+.cf-facts dt,.cf-gauges dt{font:500 10px/1.2 var(--anatomy-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--anatomy-muted)}
+.cf-facts dd,.cf-gauges dd{margin:0;font:500 15px/1.3 var(--anatomy-mono);color:var(--anatomy-strong);font-variant-numeric:tabular-nums}
+.cf-steps{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.cf-steps button{all:unset;box-sizing:border-box;position:relative;display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;padding:7px 10px;border-radius:8px;cursor:pointer;overflow:hidden;color:var(--anatomy-text)}
+.cf-steps button::before{content:"";position:absolute;inset:auto 0 0 0;height:2px;background:var(--anatomy-strong);transform-origin:left;transform:scaleX(var(--p,0));opacity:.55}
+.cf-steps button:hover{background:var(--anatomy-shade-1)}
+.cf-steps button:focus-visible{outline:2px solid var(--anatomy-strong)}
+.cf-steps li[data-now] button{background:var(--anatomy-shade-2);color:var(--anatomy-strong)}
+.cf-step-n{font:500 11px var(--anatomy-mono);color:var(--anatomy-muted)}
+.cf-step-d{font:12px var(--anatomy-mono);color:var(--anatomy-muted);font-variant-numeric:tabular-nums}
+.cf-explain{min-height:120px;padding:14px 16px;border-radius:10px;background:var(--anatomy-shade-1)}
+.cf-explain h4{margin:0 0 6px;font-size:15px;color:var(--anatomy-strong);text-wrap:balance}
+.cf-explain p{margin:0;max-width:62ch}
+@media (max-width:480px){.cf-facts,.cf-gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){.cf-flow{transition:none}}
+
+/* The water tank is clear plastic: the water and the parts behind show through. */
+[data-name="tank.body"] .iso-fill{fill-opacity:.12}
+[data-name="tank.body"] .iso-shade{fill-opacity:.28}
+[data-name="tank.body"] .iso-top{fill-opacity:.4}
+[data-name="lattego.jug"] .iso-fill{fill-opacity:.2}
+[data-name="lattego.jug"] .iso-shade{fill-opacity:.35}
+
+/* Wide screens: the figure stays in view beside the controls. */
+@media (min-width:1100px){
+  .cf-app{grid-template-columns:minmax(0,1.45fr) minmax(340px,1fr);align-items:start;gap:24px}
+  .cf-app>.iso-figure{position:sticky;top:16px}
+  .cf-panel{grid-template-columns:minmax(0,1fr)}
+}
+/* Phones: crop the empty card margin so the machine reads at 390 px. */
+@media (max-width:600px){
+  .cf-stage{overflow:hidden}
+  .cf-stage svg{transform:scale(1.3);transform-origin:52% 50%}
+}
