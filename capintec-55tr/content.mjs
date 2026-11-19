@@ -11,6 +11,7 @@ export const CHAIN = [
 export const GROUPS = [
   { title: "Ionisation chamber", parts: ["vial", "dipper", "liner", "electrodes", "argon", "collector", "guard", "housing", "shield"] },
   { title: "Readout electronics", parts: ["cable", "bias", "electrometer", "adc", "display"] },
+  { title: "Daily QC", parts: ["autozero"] },
 ];
 
 export const PARTS = {
@@ -125,5 +126,14 @@ export const PARTS = {
     what: "The touchscreen where you choose the nuclide and units and read the activity.",
     how: "It's the user interface to the processor. The nuclide you tap decides which calibration factor is applied, and the processor can also decay-correct a reading to a reference time.",
     practice: "It's also where you run the daily checks: background, system test (bias and electronics), and constancy with a long-lived reference source such as Cs-137. Accuracy, linearity and geometry checks are done at the intervals your QC programme sets.",
+  },
+  autozero: {
+    name: "Auto zero",
+    tag: "Daily QC",
+    chain: "voltage",
+    highlight: ["electrometer", "adc", "display"],
+    what: "A daily check of the electrometer's zero: what it reads when it is measuring no current at all. The result is in millivolts because it's the electrometer's output voltage, read before anything is converted into activity.",
+    how: "During the test the electrometer input is cut off from the chamber, shown by the switch in the diagram, so no signal current flows. A perfect amplifier would then output exactly 0 V. A real one never quite does. Tiny imperfections in the op-amp (its input offset voltage and bias current), leakage across insulators and small thermoelectric voltages where different metals meet leave a small residual. The processor measures that residual, stores it, and subtracts it from every later reading, so it's never mistaken for signal. Your −0.04 mV is that residual. The minus sign just means the output sits fractionally below zero instead of above. For scale: through the illustrative 10 GΩ feedback resistor, 0.04 mV corresponds to about 4 fA (4 × 10⁻¹⁵ A), far smaller than the current from even a small clinical source.",
+    practice: "What matters is that it's small and stable, not its exact value. A value that drifts from day to day, jumps, or fails as out of range points to the electronics: moisture or dirt on insulators, a damaged cable or connector, or an electrometer fault. The manual for the related CRC-25W shows example results such as '−0.03 mV OK' and gives a caution if the value moves more than ±0.30 mV since the previous measurement. Check your own model's manual for its limits. Auto zero is not the background check. Auto zero tests the electronics with no input. Background tests the chamber connected, measuring ambient radiation and any contamination, and is reported as activity.",
   },
 };

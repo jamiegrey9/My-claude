@@ -125,7 +125,16 @@ function panel() {
   out.push(`<g transform="${M}">
     <rect class="scr-bezel" x="${sx - 2.5}" y="${sy - 2.5}" width="${sw + 5}" height="${sh + 5}" rx="2"/>
     <rect class="scr" x="${sx}" y="${sy}" width="${sw}" height="${sh}" rx="1"/>
-    <g class="scr-ink">
+    <g class="scr-ink scr-zero" data-scr="zero" style="display:none">
+      <text x="${sx + 4}" y="${sy + 8}" font-size="5">Daily tests</text>
+      <line x1="${sx + 3}" y1="${sy + 11}" x2="${sx + sw - 3}" y2="${sy + 11}"/>
+      <text x="${sx + 4}" y="${sy + 21}" font-size="5" class="scr-dim">Auto zero</text>
+      <text x="${cx + 14}" y="${sy + 33}" font-size="12" text-anchor="end" data-zero="">…</text>
+      <text x="${cx + 17}" y="${sy + 33}" font-size="6">mV</text>
+      <text x="${sx + sw - 4}" y="${sy + 33}" font-size="5" text-anchor="end" data-zero-ok="">measuring</text>
+      <text x="${sx + 4}" y="${sy + sh - 5}" font-size="3.4" class="scr-dim">Input disconnected from chamber</text>
+    </g>
+    <g class="scr-ink" data-scr="main">
       <text x="${sx + 4}" y="${sy + 8}" font-size="5">Tc-99m</text>
       <text x="${sx + sw - 4}" y="${sy + 8}" font-size="4" text-anchor="end" class="scr-dim">Vial · 10 mL</text>
       <line x1="${sx + 3}" y1="${sy + 11}" x2="${sx + sw - 3}" y2="${sy + 11}"/>
@@ -299,6 +308,26 @@ ${PAGE_CSS}</style>
       <p data-info="what"></p>
       <h4 data-info="how-h">How it works</h4>
       <p data-info="how"></p>
+      <figure class="circuit" data-circuit="" hidden>
+        <svg viewBox="0 0 520 150" role="img" aria-label="Simplified electrometer: chamber collector through an input switch to the inverting input of an op-amp with a feedback resistor, output to the ADC. During auto zero the switch moves to ground.">
+          <rect class="c-box" x="8" y="55" width="84" height="40" rx="3"/><text x="50" y="79" text-anchor="middle">Chamber</text>
+          <path class="c-w" d="M92 75H150"/><circle class="c-dot" cx="150" cy="75" r="2.6"/>
+          <circle class="c-dot" cx="161" cy="100" r="2.6"/><path class="c-w" d="M161 100V120M151 120H171M155 125H167M159 130H163"/>
+          <g class="c-blade"><path class="c-w c-sw" d="M190 75H152"/></g><circle class="c-dot" cx="190" cy="75" r="2.6"/>
+          <path class="c-w" d="M190 75H250M226 75V30H262M326 30H392V85"/>
+          <path class="c-w" d="M262 30l5-7 8 14 8-14 8 14 8-14 8 14 8-14 6 7"/>
+          <text x="294" y="16" text-anchor="middle">Rf  (GΩ)</text>
+          <path class="c-amp" d="M250 52V118L330 85Z"/><text x="258" y="80" class="c-big">−</text><text x="257" y="111" class="c-big">+</text>
+          <path class="c-w" d="M250 105H236V122M226 122H246M230 127H242M234 132H238"/>
+          <path class="c-w" d="M330 85H432"/><circle class="c-dot" cx="392" cy="85" r="2.6"/>
+          <rect class="c-box" x="432" y="65" width="80" height="40" rx="3"/><text x="472" y="89" text-anchor="middle">ADC</text>
+          <text x="342" y="128" class="c-out" data-circuit-out="">V = −I × Rf</text>
+          <text x="120" y="62" text-anchor="middle" class="c-lbl">input</text>
+          <text x="186" y="120" class="c-lbl" data-circuit-sw="">zero</text>
+        </svg>
+        <figcaption data-circuit-cap=""></figcaption>
+      </figure>
+      <button type="button" class="run" data-run-zero="" hidden>Run auto zero again</button>
       <h4>In practice</h4>
       <p data-info="practice"></p>
     </article>

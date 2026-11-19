@@ -95,3 +95,20 @@ h1{margin:0;font:600 clamp(28px,5vw,42px)/1.08 var(--f-display);letter-spacing:-
 .theme{font:500 12px/1 var(--f-mono);letter-spacing:.06em;color:var(--ink);background:var(--panel);border:1px solid var(--rule);padding:8px 12px;cursor:pointer}
 @media (prefers-reduced-motion:reduce){.cable-flow{animation:none!important}}
 @media (max-width:560px){.iso-plate{padding:40px 6px 46px;overflow:hidden}.iso-stage svg{width:114%;max-width:none;margin-left:-7%}}
+
+.circuit{margin:18px 0 4px;padding:12px 12px 10px;background:var(--bg);box-shadow:0 0 0 1px var(--rule);overflow-x:auto}
+.circuit svg{display:block;width:100%;min-width:420px;height:auto;font:500 12px var(--f-mono)}
+.circuit text{fill:var(--ink)}
+.circuit .c-lbl{fill:var(--muted);font-size:11px}
+.circuit .c-big{font-size:16px}
+.circuit .c-out{fill:var(--sel)}
+.c-w{fill:none;stroke:var(--ink);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.c-box,.c-amp{fill:var(--panel);stroke:var(--ink);stroke-width:1.4}
+.c-dot{fill:var(--panel);stroke:var(--ink);stroke-width:1.4}
+.c-blade{transform-box:view-box;transform-origin:190px 75px;transition:transform .6s cubic-bezier(.32,.72,0,1)}
+.c-sw{stroke:var(--sel);stroke-width:2}
+.circuit.zero .c-blade{transform:rotate(-40deg)}
+.circuit figcaption{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.run{margin-top:12px;font:500 12px/1 var(--f-mono);letter-spacing:.04em;color:var(--ink);background:var(--sel-soft);border:1px solid var(--sel);padding:8px 12px;cursor:pointer}
+.run:focus-visible{outline:2px solid var(--sel);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.c-blade{transition:none}}

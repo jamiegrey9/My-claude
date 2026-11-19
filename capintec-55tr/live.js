@@ -30,12 +30,23 @@ const info = Object.fromEntries([...document.querySelectorAll("[data-info]")].ma
 const buttons = [...document.querySelectorAll("[data-pick]")];
 const order = buttons.map((b) => b.dataset.pick);
 const steps = [...document.querySelectorAll(".chain li")];
+const circuit = document.querySelector("[data-circuit]");
+const circuitOut = document.querySelector("[data-circuit-out]");
+const circuitSw = document.querySelector("[data-circuit-sw]");
+const circuitCap = document.querySelector("[data-circuit-cap]");
+const runBtn = document.querySelector("[data-run-zero]");
+const scrMain = svg.querySelector('[data-scr="main"]');
+const scrZero = svg.querySelector('[data-scr="zero"]');
+const zeroValue = svg.querySelector("[data-zero]");
+const zeroOk = svg.querySelector("[data-zero-ok]");
+runBtn.addEventListener("click", () => runZero());
 let current = null;
 function select(id) {
   if (!PARTS[id]) return;
   current = id;
   const part = PARTS[id];
-  svg.querySelectorAll("[data-part]").forEach((g) => g.classList.toggle("on", g.dataset.part === id));
+  const lit = part.highlight || [id];
+  svg.querySelectorAll("[data-part]").forEach((g) => g.classList.toggle("on", lit.includes(g.dataset.part)));
   stage.classList.add("picking");
   buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.pick === id)));
   info.tag.textContent = part.tag + " · step " + (CHAIN.indexOf(part.chain) + 1) + " of " + CHAIN.length;
@@ -51,6 +62,35 @@ function select(id) {
   stage.toggleAttribute("data-ions-on", ionsOn);
   stage.toggleAttribute("data-gas-on", id === "argon");
   stage.toggleAttribute("data-flow", ["electrometer", "adc", "display"].includes(id));
+  const zero = id === "autozero";
+  circuit.hidden = !(zero || id === "electrometer");
+  runBtn.hidden = !zero;
+  scrMain.style.display = zero ? "none" : "";
+  scrZero.style.display = zero ? "" : "none";
+  if (zero) runZero();
+  else {
+    clearTimeout(zeroTimer);
+    circuit.classList.remove("zero");
+    circuitOut.textContent = "V = −I × Rf";
+    circuitSw.textContent = "zero";
+    circuitCap.textContent = "Measuring: the switch connects the chamber's collector to the amplifier. The amplifier holds its − input at 0 V by driving the collector current back through Rf, so its output voltage is the current × Rf.";
+  }
+}
+let zeroTimer = 0;
+function runZero() {
+  clearTimeout(zeroTimer);
+  circuit.classList.add("zero");
+  circuitSw.textContent = "zero";
+  circuitOut.textContent = "measuring…";
+  zeroValue.textContent = "…";
+  zeroOk.textContent = "measuring";
+  circuitCap.textContent = "Auto zero: the switch disconnects the chamber, so no signal current flows. Whatever voltage remains at the output is the electrometer's own offset. It is stored and subtracted from every later reading.";
+  zeroTimer = setTimeout(() => {
+    const v = "−0.0" + (3 + Math.floor(Math.random() * 3));
+    zeroValue.textContent = v;
+    zeroOk.textContent = "OK";
+    circuitOut.textContent = "offset " + v + " mV (example)";
+  }, still.matches ? 0 : 1400);
 }
 svg.addEventListener("click", (event) => {
   const g = event.target.closest("[data-part]");
