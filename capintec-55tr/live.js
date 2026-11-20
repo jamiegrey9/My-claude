@@ -26,6 +26,7 @@ document.querySelector("[data-theme-toggle]").addEventListener("click", () => {
 applyTheme();
 
 // ---- selection ----
+const infoBox = document.querySelector(".info");
 const info = Object.fromEntries([...document.querySelectorAll("[data-info]")].map((n) => [n.dataset.info, n]));
 const buttons = [...document.querySelectorAll("[data-pick]")];
 const order = buttons.map((b) => b.dataset.pick);
@@ -44,6 +45,8 @@ let current = null;
 function select(id) {
   if (!PARTS[id]) return;
   current = id;
+  infoBox.removeAttribute("data-empty");
+  infoBox.scrollTop = 0;
   const part = PARTS[id];
   const lit = part.highlight || [id];
   svg.querySelectorAll("[data-part]").forEach((g) => g.classList.toggle("on", lit.includes(g.dataset.part)));
@@ -107,7 +110,21 @@ document.querySelector(".parts").addEventListener("keydown", (event) => {
   select(order[to]);
   buttons[to].focus();
 });
-select("collector");
+function clearSelection() {
+  current = null;
+  infoBox.setAttribute("data-empty", "");
+  svg.querySelectorAll("[data-part].on").forEach((g) => g.classList.remove("on"));
+  stage.classList.remove("picking");
+  stage.removeAttribute("data-gas-on");
+  stage.removeAttribute("data-flow");
+  buttons.forEach((b) => b.setAttribute("aria-pressed", "false"));
+  readout.textContent = "Nothing selected";
+  scrMain.style.display = "";
+  scrZero.style.display = "none";
+}
+document.querySelector("[data-close]").addEventListener("click", clearSelection);
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && current) clearSelection(); });
+clearSelection();
 
 // ---- ion pairs drifting apart on the two cut planes ----
 const layer = svg.querySelector("[data-ions]");

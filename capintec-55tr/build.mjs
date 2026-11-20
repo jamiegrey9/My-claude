@@ -272,7 +272,7 @@ const plate = k.plateHtml({
   fig: "Fig 1",
   title: "CRC-55tR · cutaway",
   hint: "Tap a part to explain it",
-  readout: "Collecting electrode",
+  readout: "Nothing selected",
   body: `<div class="iso-stage" data-stage="">${svg}</div>`,
 });
 
@@ -295,12 +295,17 @@ ${PAGE_CSS}</style>
   <header class="head">
     <p class="eyebrow">Nuclear medicine · radionuclide calibrator</p>
     <h1>Inside the CRC-55tR</h1>
-    <p class="lede">A well-type ionisation chamber and its readout, cut open. Pick any part to see what it does and how the measurement electronics turn a few ions into an activity in MBq.</p>
+    <p class="lede">A well-type ionisation chamber and its readout, cut open. Tap any part of the drawing, or pick one from the list, and its explanation opens beside it.</p>
   </header>
-  ${plate}
-  <section class="explore">
-    <nav class="parts" aria-label="Components">${listHtml}</nav>
-    <article class="info" aria-live="polite">
+  <section class="bench">
+    <div class="bench-fig">${plate}<nav class="parts" aria-label="Components">${listHtml}</nav></div>
+    <aside class="info" data-empty="" aria-live="polite" aria-label="Component explanation">
+      <div class="info-empty">
+        <p class="tag">Nothing selected</p>
+        <p>Tap a part of the chamber or the readout to see what it does and how it works.</p>
+      </div>
+      <div class="info-body">
+      <button type="button" class="close" data-close="" aria-label="Close explanation">×</button>
       ${chainHtml}
       <p class="tag" data-info="tag"></p>
       <h2 data-info="name"></h2>
@@ -330,7 +335,8 @@ ${PAGE_CSS}</style>
       <button type="button" class="run" data-run-zero="" hidden>Run auto zero again</button>
       <h4>In practice</h4>
       <p data-info="practice"></p>
-    </article>
+      </div>
+    </aside>
   </section>
   <footer class="notes">
     <p>Schematic, not a service drawing. The chamber proportions follow the published CRC-55tR figures: about 17 cm across and 44 cm tall, with a 6.1 cm × 25.4 cm well and a 12 atm ultra-pure argon fill. The electrode layout, board arrangement and screen contents are simplified illustrations. Ion drift is slowed by many orders of magnitude so you can see it, and the screen reading is an example. For a specific unit, check the Mirion/Capintec owner's manual.</p>
