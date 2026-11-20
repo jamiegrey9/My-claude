@@ -286,7 +286,7 @@ function model(s){
 const MS = [10, 20, 50, 100, 200, 400, 800, 1600];
 const tech = { kv: 80, ma: 320, ms: 100, focus: "large" };
 let M = model(tech);
-let step = 0, playing = !still.matches, stepClock = 0, idleTimer = 0;
+let step = 0, playing = !still.matches, stepClock = 0, idleTimer = 0, chosen = false;
 const STEP_SECONDS = 5.2;
 const cur = { fil: .15, spin: 0, hv: 0, heat: 0, emit: 0, beam: 0, img: 0 };
 const TARGET = [
@@ -386,11 +386,11 @@ function setStep(i, user){
   stTitle.textContent = STEPS[step].title; stBody.textContent = STEPS[step].body;
   phase.textContent = "step " + (step + 1) + " of " + STEPS.length;
   $$("ol.steps button").forEach((b, j) => { b.toggleAttribute("aria-current", j === step); if (j === step) b.setAttribute("aria-current", "step"); b.classList.toggle("done", j < step); });
-  if (user) pause();
+  if (user){ chosen = true; pause(); }
   kick();
 }
 function pause(){ playing = false; playBtn.textContent = "Play"; }
-function play(){ playing = true; playBtn.textContent = "Pause"; if (step === STEPS.length - 1) setStep(0); kick(); }
+function play(){ chosen = true; playing = true; playBtn.textContent = "Pause"; if (step === STEPS.length - 1) setStep(0); kick(); }
 playBtn.addEventListener("click", () => playing ? pause() : play());
 $("#next").addEventListener("click", () => setStep(step + 1, true));
 $("#back").addEventListener("click", () => setStep(step - 1, true));
@@ -478,7 +478,7 @@ const readout = $("[data-readout]");
 const fils = $$(".filament", svg);
 function tick(now){
   const dt = last ? Math.min((now - last) / 1000, 1/20) : 1/60; last = now;
-  const calm = still.matches;
+  const calm = still.matches && !chosen;
   if (playing){ stepClock += dt; if (stepClock > (step === STEPS.length - 1 ? STEP_SECONDS + 2 : STEP_SECONDS)) setStep(step + 1); }
   const T = TARGET[step];
   for (const key in cur) cur[key] = calm ? T[key] : easeTo(cur[key], T[key], dt, key === "spin" ? .9 : key === "heat" && T.heat < cur.heat ? 1.8 : .35);
