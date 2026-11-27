@@ -37,6 +37,7 @@ h1{font:600 clamp(26px,4vw,38px)/1.05 var(--font-display);letter-spacing:-.01em;
 .part{cursor:pointer}
 .part:hover .iso-line{stroke:var(--anatomy-hi)}
 .stage[data-focus] .part{opacity:.38;transition:opacity .25s}
+.stage[data-lifted] .part{opacity:.62}
 .stage[data-focus] .part[data-sel]{opacity:1}
 .part[data-sel] .iso-line,.part[data-sel] .iso-edge{stroke:var(--xr)!important}
 .part[data-sel] .cs{fill:var(--xr-soft)}
@@ -83,9 +84,20 @@ h1{font:600 clamp(26px,4vw,38px)/1.05 var(--font-display);letter-spacing:-.01em;
 .pop dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
 .pop .x{position:absolute;top:8px;right:8px;width:28px;height:28px;border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;border-radius:4px}
 .pop .x:hover{background:var(--rule);color:var(--ink)}
+.lift-layer{cursor:grab;filter:drop-shadow(0 10px 10px rgb(0 0 0 / .28)) drop-shadow(0 2px 2px rgb(0 0 0 / .18))}
+.stage[data-dragging] .lift-layer{cursor:grabbing}
+.stage[data-lifted] svg{touch-action:none}
+.stage[data-lifted] .fx{opacity:.3}
+.ghost{pointer-events:none}
+.ghost .cf,.ghost .iso-shade,.ghost .iso-top,.ghost .cs,.ghost .tb-body,.ghost .tb-shine,.ghost .tb-shade,.ghost .tb-ring,.ghost .iso-dots,.ghost text,.ghost .iso-halo,.ghost .mirror,.ghost .det-glow{display:none}
+.ghost .iso-fill{fill:var(--anatomy-shade-0);opacity:.55}
+.ghost .iso-line,.ghost .iso-edge{stroke:var(--anatomy-mid)!important;stroke-dasharray:2 2.4;opacity:.8}
+.pop-status{font-size:12px;color:var(--muted)!important;margin:10px 0 0!important}
+.pop-actions{display:flex;gap:8px;margin-top:10px}
+.pop-actions .btn{height:32px;font-size:12.5px}
 .pop-line{position:absolute;pointer-events:none;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--xr);background:var(--surface);transform:translate(-50%,-50%);z-index:4}
 .pop-line[hidden]{display:none}
-@media (max-width:640px){.pop{position:relative;width:auto;margin-top:12px;box-shadow:none;left:auto!important;top:auto!important}.iso-plate-corner[data-corner="title"]{display:none}}
+@media (max-width:640px){.pop{position:relative;width:auto;margin:12px 0 26px;box-shadow:none;left:auto!important;top:auto!important}.iso-plate-corner[data-corner="title"]{display:none}}
 .parts{margin-top:14px;display:grid;gap:10px}
 .parts .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .parts .row span{font:500 10px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);width:100%;}
@@ -162,7 +174,7 @@ const chips = Object.entries(groups)
 const plate = k.plateHtml({
   fig: "Fig 1",
   title: "Rotating-anode X-ray tube · half section",
-  hint: "Click any part",
+  hint: "Click a part to pull it out",
   readout: "standby",
   keys: [],
   caption: "",
@@ -178,7 +190,7 @@ const html = `<title>X-Ray Tube Anatomy</title>
 <header class="top">
   <span class="eyebrow">Diagnostic radiography · tube anatomy</span>
   <h1>X-Ray Tube Anatomy</h1>
-  <p class="lede">A standard hospital X-ray tube, cut in half down its axis. Click any part to see what it does, then run an exposure to follow one burst of X-rays from a hot filament to a picture on the detector.</p>
+  <p class="lede">A standard hospital X-ray tube, cut in half down its axis. Click any part to pull it out of the instrument, drag it around and read what it does. Run an exposure to follow one burst of X-rays from a hot filament to a picture on the detector.</p>
 </header>
 <div class="layout">
   <section aria-label="Tube figure">
@@ -335,45 +347,204 @@ function spawnPhoton(p){
   p.d = d; p.len = len; p.t = 0; p.live = true; p.speed = 95 + Math.random()*20;
 }
 
-/* ---------- popups ---------- */
+/* ---------- popups and pull-out ---------- */
 const pop = $(".pop", stage), dot = $(".pop-line", stage), tag = $(".hover-tag", stage);
-let selected = null;
-function select(id, from){
+const ACTS = { filament: 1, cathode: 1, rotor: 2, stator: 2, stem: 2, anode: 4, envelope: 3, "cathode-cable": 3, "anode-cable": 3, console: 3, window: 5, filter: 5, housing: 5, collimator: 5, phantom: 6, detector: 6, stand: 0 };
+let selected = null, lift = null, frozen = false;
+const liftLayer = document.createElementNS(NS, "g");
+liftLayer.setAttribute("class", "lift-layer");
+svg.appendChild(liftLayer);
+const toView = (e) => { const r = svg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; };
+
+function card(id){
+  const p = PARTS[id];
+  const act = ACTS[id];
+  const status = lift ? (lift.wasPlaying ? '<p class="pop-status">Sequence paused while this part is out. Put it back to carry on.</p>' : '<p class="pop-status">Drag the part to look at it from a clear spot.</p>') : '<p class="pop-status">Watching step ' + (step + 1) + ': ' + STEPS[step].title + '.</p>';
+  const actions = lift
+    ? '<div class="pop-actions"><button class="btn" type="button" data-act="back">Put back</button><button class="btn primary" type="button" data-act="watch">See it in action</button></div>'
+    : '<div class="pop-actions"><button class="btn" type="button" data-act="pull">Pull it out</button><button class="btn" type="button" data-act="close">Done</button></div>';
+  pop.innerHTML = '<button class="x" type="button" aria-label="Close">×</button><div class="grp">' + p.group + '</div><h3>' + p.name + '</h3><p class="role">' + p.role + '</p><p>' + p.body + '</p><dl>' + p.facts.map(([a,b]) => '<dt>' + a + '</dt><dd>' + b + '</dd>').join("") + '</dl>' + status + actions;
+  $(".x", pop).addEventListener("click", () => { select(null); stage.focus(); });
+  pop.querySelector('[data-act="back"]')?.addEventListener("click", () => { select(null); stage.focus(); });
+  pop.querySelector('[data-act="close"]')?.addEventListener("click", () => { select(null); stage.focus(); });
+  pop.querySelector('[data-act="pull"]')?.addEventListener("click", () => select(id, "pull"));
+  pop.querySelector('[data-act="watch"]')?.addEventListener("click", () => watch(id));
+}
+
+function highlight(id){
   selected = id;
   $$(".part", svg).forEach((g) => g.toggleAttribute("data-sel", g.dataset.part === id));
   $$(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.pick === id)));
-  if (!id){ stage.removeAttribute("data-focus"); pop.hidden = true; dot.hidden = true; return; }
-  stage.setAttribute("data-focus", "");
-  const p = PARTS[id];
-  pop.innerHTML = '<button class="x" type="button" aria-label="Close">×</button><div class="grp">' + p.group + '</div><h3>' + p.name + '</h3><p class="role">' + p.role + '</p><p>' + p.body + '</p><dl>' + p.facts.map(([a,b]) => '<dt>' + a + '</dt><dd>' + b + '</dd>').join("") + '</dl>';
+  stage.toggleAttribute("data-focus", Boolean(id));
+}
+
+function pull(id){
+  const groups = $$('.part[data-part="' + id + '"]', svg);
+  if (!groups.length) return;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const g of groups){ const b = g.getBBox(); if (!b.width && !b.height) continue; x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); }
+  const c = [(x0 + x1) / 2, (y0 + y1) / 2];
+  const ghosts = groups.map((g) => { const gh = g.cloneNode(true); gh.setAttribute("class", "ghost"); gh.removeAttribute("data-part"); gh.removeAttribute("data-sel"); gh.setAttribute("aria-hidden", "true"); g.before(gh); return gh; });
+  groups.forEach((g) => liftLayer.appendChild(g));
+  let d = [c[0] - W / 2, c[1] - H * .52]; const n = Math.hypot(...d) || 1; d = [d[0] / n, d[1] / n];
+  const ts = (x1 - x0) > W * .45 ? 1.02 : 1.12;
+  const reach = (x1 - x0) > W * .45 ? 26 : 58;
+  let target = [d[0] * reach, d[1] * reach - 24];
+  target = clampOff(target, [x0, y0, x1, y1], c, ts);
+  lift = { id, groups, ghosts, box: [x0, y0, x1, y1], c, off: [0, 0], s: 1, target, ts, wasPlaying: playing, home: false };
+  if (playing) pause();
+  frozen = true;
+  stage.setAttribute("data-lifted", "");
+  animateLift();
+}
+
+function clampOff(off, box, c, s){
+  const [x0, y0, x1, y1] = box;
+  const ax0 = c[0] + (x0 - c[0]) * s, ax1 = c[0] + (x1 - c[0]) * s, ay0 = c[1] + (y0 - c[1]) * s, ay1 = c[1] + (y1 - c[1]) * s;
+  const pad = 6;
+  const lo = [pad - ax0, pad - ay0], hi = [W - pad - ax1, H - pad - ay1];
+  return [lo[0] > hi[0] ? (lo[0] + hi[0]) / 2 : Math.min(hi[0], Math.max(lo[0], off[0])), lo[1] > hi[1] ? (lo[1] + hi[1]) / 2 : Math.min(hi[1], Math.max(lo[1], off[1]))];
+}
+
+function paintLift(){
+  if (!lift) return;
+  const { c, off, s } = lift;
+  liftLayer.setAttribute("transform", "translate(" + (off[0] + c[0]).toFixed(2) + " " + (off[1] + c[1]).toFixed(2) + ") scale(" + s.toFixed(4) + ") translate(" + (-c[0]).toFixed(2) + " " + (-c[1]).toFixed(2) + ")");
+  place();
+}
+
+let liftFrame = 0, liftLast = 0;
+function animateLift(){ if (!liftFrame){ liftLast = 0; liftFrame = requestAnimationFrame(liftStep); } }
+function liftStep(now){
+  liftFrame = 0;
+  if (!lift) return;
+  const dt = liftLast ? Math.min((now - liftLast) / 1000, 1 / 20) : 1 / 60; liftLast = now;
+  const k = still.matches ? 1 : 1 - Math.exp(-dt / .12);
+  const goal = lift.home ? [0, 0] : lift.target, gs = lift.home ? 1 : lift.ts;
+  if (!lift.drag){ lift.off = [lift.off[0] + (goal[0] - lift.off[0]) * k, lift.off[1] + (goal[1] - lift.off[1]) * k]; }
+  lift.s += (gs - lift.s) * k;
+  paintLift();
+  const done = Math.hypot(goal[0] - lift.off[0], goal[1] - lift.off[1]) < (lift.home ? .8 : .15) && Math.abs(gs - lift.s) < (lift.home ? .004 : .001);
+  if (done && lift.home){ seat(); return; }
+  if (!done || lift.drag) liftFrame = requestAnimationFrame(liftStep);
+}
+
+function seat(){
+  if (!lift) return;
+  lift.groups.forEach((g, i) => { lift.ghosts[i].after(g); lift.ghosts[i].remove(); });
+  liftLayer.removeAttribute("transform");
+  const resume = lift.wasPlaying && lift.resume;
+  lift = null; frozen = false;
+  stage.removeAttribute("data-lifted");
+  if (resume) play();
+  kick();
+}
+
+function putBack({ resume = true, instant = false } = {}){
+  if (!lift) return;
+  lift.resume = resume;
+  lift.home = true; lift.drag = null;
+  if (instant || still.matches){ seat(); return; }
+  animateLift();
+}
+
+function select(id, from){
+  if (!id){ putBack(); highlight(null); pop.hidden = true; dot.hidden = true; return; }
+  if (lift && lift.id !== id) putBack({ resume: false, instant: true });
+  highlight(id);
+  if (!lift) pull(id);
+  card(id);
   pop.hidden = false;
-  $(".x", pop).addEventListener("click", () => { select(null); stage.focus(); });
   place();
   if (from === "chip" && innerWidth <= 640) pop.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
+
+function watch(id){
+  putBack({ resume: false, instant: true });
+  highlight(id);
+  setStep(ACTS[id] ?? 0, true);
+  play();
+  card(id);
+  pop.hidden = false;
+  place();
+}
+
+function anchorNow(id){
+  const a = X.anchorPx[id];
+  if (!lift || lift.id !== id) return a;
+  const { c, off, s } = lift;
+  return [c[0] + (a[0] - c[0]) * s + off[0], c[1] + (a[1] - c[1]) * s + off[1]];
+}
 function place(){
-  if (!selected) return;
-  const a = X.anchorPx[selected];
+  if (!selected || pop.hidden) return;
+  const a = anchorNow(selected);
   const box = svg.getBoundingClientRect(), sbox = stage.getBoundingClientRect();
   const px = box.left - sbox.left + a[0] / W * box.width, py = box.top - sbox.top + a[1] / H * box.height;
   dot.hidden = false; dot.style.left = px + "px"; dot.style.top = py + "px";
   if (innerWidth <= 640){ pop.style.left = pop.style.top = ""; return; }
-  const pw = pop.offsetWidth, ph = pop.offsetHeight, gap = 18;
-  let left = px < sbox.width * .55 ? px + gap : px - pw - gap;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight, gap = 22;
+  let left, top;
+  if (lift && lift.id === selected){
+    const cx = box.left - sbox.left + (lift.c[0] + lift.off[0]) / W * box.width;
+    left = cx > sbox.width / 2 ? 14 : sbox.width - pw - 14;
+    top = 40;
+  } else {
+    left = px < sbox.width * .55 ? px + gap : px - pw - gap;
+    top = py - ph / 2;
+  }
   left = Math.max(4, Math.min(sbox.width - pw - 4, left));
-  let top = Math.max(4, Math.min(sbox.height - ph - 4, py - ph / 2));
+  top = Math.max(4, Math.min(sbox.height - ph - 4, top));
   pop.style.left = left + "px"; pop.style.top = top + "px";
 }
 addEventListener("resize", place);
-svg.addEventListener("click", (e) => { const g = e.target.closest(".part"); select(g ? (g.dataset.part === selected ? null : g.dataset.part) : null); });
+
+liftLayer.addEventListener("pointerdown", (e) => {
+  if (!lift || lift.home) return;
+  e.preventDefault();
+  lift.drag = { start: toView(e), from: [...lift.off], id: e.pointerId };
+  liftLayer.setPointerCapture?.(e.pointerId);
+  stage.setAttribute("data-dragging", "");
+  animateLift();
+});
+liftLayer.addEventListener("pointermove", (e) => {
+  if (!lift || !lift.drag) return;
+  const p = toView(e);
+  const dx = p[0] - lift.drag.start[0], dy = p[1] - lift.drag.start[1];
+  lift.off = clampOff([lift.drag.from[0] + dx, lift.drag.from[1] + dy], lift.box, lift.c, lift.s);
+  lift.target = [...lift.off];
+  paintLift();
+});
+const endDrag = () => { if (lift && lift.drag){ lift.drag = null; stage.removeAttribute("data-dragging"); } };
+liftLayer.addEventListener("pointerup", endDrag);
+liftLayer.addEventListener("pointercancel", endDrag);
+
+svg.addEventListener("click", (e) => {
+  if (e.target.closest(".lift-layer")) return;
+  const g = e.target.closest(".part");
+  if (g) select(g.dataset.part === selected && lift ? null : g.dataset.part);
+  else if (selected) select(null);
+});
 svg.addEventListener("pointermove", (e) => {
   const g = e.target.closest(".part"); const sbox = stage.getBoundingClientRect();
-  if (g && e.pointerType === "mouse"){ tag.textContent = PARTS[g.dataset.part].name; tag.style.left = (e.clientX - sbox.left) + "px"; tag.style.top = (e.clientY - sbox.top) + "px"; tag.setAttribute("data-on", ""); }
+  if (g && e.pointerType === "mouse" && !(lift && lift.drag)){
+    tag.textContent = e.target.closest(".lift-layer") ? "Drag to move" : PARTS[g.dataset.part].name;
+    tag.style.left = (e.clientX - sbox.left) + "px"; tag.style.top = (e.clientY - sbox.top) + "px"; tag.setAttribute("data-on", "");
+  }
   else tag.removeAttribute("data-on");
 });
 svg.addEventListener("pointerleave", () => tag.removeAttribute("data-on"));
-$$(".chip").forEach((c) => c.addEventListener("click", () => select(c.dataset.pick === selected ? null : c.dataset.pick, "chip")));
+$$(".chip").forEach((c) => c.addEventListener("click", () => select(c.dataset.pick === selected && lift ? null : c.dataset.pick, "chip")));
 addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) select(null); });
+stage.addEventListener("keydown", (e) => {
+  if (!lift || lift.home) return;
+  const step2 = e.shiftKey ? 20 : 6;
+  const m = { ArrowLeft: [-step2, 0], ArrowRight: [step2, 0], ArrowUp: [0, -step2], ArrowDown: [0, step2] }[e.key];
+  if (!m) return;
+  e.preventDefault();
+  lift.off = clampOff([lift.off[0] + m[0], lift.off[1] + m[1]], lift.box, lift.c, lift.s);
+  lift.target = [...lift.off];
+  paintLift();
+});
 
 /* ---------- sequence UI ---------- */
 const stTitle = $("[data-st-title]"), stBody = $("[data-st-body]"), phase = $("[data-phase]"), playBtn = $("#play");
@@ -386,11 +557,12 @@ function setStep(i, user){
   stTitle.textContent = STEPS[step].title; stBody.textContent = STEPS[step].body;
   phase.textContent = "step " + (step + 1) + " of " + STEPS.length;
   $$("ol.steps button").forEach((b, j) => { b.toggleAttribute("aria-current", j === step); if (j === step) b.setAttribute("aria-current", "step"); b.classList.toggle("done", j < step); });
-  if (user){ chosen = true; pause(); }
+  if (user){ chosen = true; if (lift) putBack({ resume: false, instant: true }); pause(); }
+  if (selected && !pop.hidden && !lift) card(selected);
   kick();
 }
 function pause(){ playing = false; playBtn.textContent = "Play"; }
-function play(){ chosen = true; playing = true; playBtn.textContent = "Pause"; if (step === STEPS.length - 1) setStep(0); kick(); }
+function play(){ if (lift) putBack({ resume: false, instant: true }); chosen = true; playing = true; playBtn.textContent = "Pause"; if (step === STEPS.length - 1) setStep(0); kick(); }
 playBtn.addEventListener("click", () => playing ? pause() : play());
 $("#next").addEventListener("click", () => setStep(step + 1, true));
 $("#back").addEventListener("click", () => setStep(step - 1, true));
@@ -477,7 +649,7 @@ const easeTo = (a, b, dt, tau) => a + (b - a) * (1 - Math.exp(-dt / tau));
 const readout = $("[data-readout]");
 const fils = $$(".filament", svg);
 function tick(now){
-  const dt = last ? Math.min((now - last) / 1000, 1/20) : 1/60; last = now;
+  const dt = frozen ? 0 : (last ? Math.min((now - last) / 1000, 1/20) : 1/60); last = now;
   const calm = still.matches && !chosen;
   if (playing){ stepClock += dt; if (stepClock > (step === STEPS.length - 1 ? STEP_SECONDS + 2 : STEP_SECONDS)) setStep(step + 1); }
   const T = TARGET[step];
@@ -526,7 +698,7 @@ function tick(now){
   fils.forEach((f) => f.style.setProperty("--fil", f.dataset.fil === tech.focus ? cur.fil : cur.fil * .2));
 
   const busy = playing || Object.keys(cur).some((key) => Math.abs(cur[key] - T[key]) > .002) || cur.spin > .01 || cur.emit > .01 || stored > 1;
-  frame = visible && busy ? requestAnimationFrame(tick) : 0;
+  frame = visible && busy && !frozen ? requestAnimationFrame(tick) : 0;
 }
 function kick(){ if (!frame && visible){ last = 0; frame = requestAnimationFrame(tick); } }
 new IntersectionObserver((en) => { visible = en[en.length - 1].isIntersecting; if (visible) kick(); }).observe(stage);
