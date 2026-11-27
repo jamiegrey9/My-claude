@@ -1,172 +1,16 @@
 import { writeFileSync } from "node:fs";
-import * as k from "./kit/iso-kit.mjs";
+import * as k from "../../assets/kit/iso-kit.mjs";
+import * as G from "../../assets/kit/lathe.mjs";
 import { build, extras, models, P, WIDTH, HEIGHT } from "./geometry.mjs";
-import * as G from "./kit/lathe.mjs";
 import { PARTS, STEPS_TEXT } from "./content.mjs";
+import { pageHtml, standalone } from "../../assets/engine/page.mjs";
 
-const svg = build();
 const X = extras();
-
-const groups = {};
-for (const [id, p] of Object.entries(PARTS)) (groups[p.group] ||= []).push(id);
-
-const CSS = `
-:root{
-  /* Layout: figure card left, instrument panel right; stacks to one column under 980px */
-  --bg:#efefeb;--surface:#fbfbfa;--ink:#18181a;--ink-2:#57575a;--muted:#8c8c90;--rule:#d9d9d5;
-  --xr:#4b3fd6;--xr-soft:#4b3fd622;--heat:#d4561a;--heat-soft:#d4561a33;--e:#0b6e8a;--on-xr:#ffffff;
-  --font-display:"IBM Plex Sans Condensed","IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
-  --font-body:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0b0c;--surface:#131314;--ink:#e8e8e6;--ink-2:#a3a3a3;--muted:#6e6e70;--rule:#2a2a2c;--xr:#9d94ff;--xr-soft:#9d94ff22;--heat:#ff8f4a;--heat-soft:#ff8f4a33;--e:#6fd3ef;--on-xr:#0b0b0c;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#0b0b0c;--surface:#131314;--ink:#e8e8e6;--ink-2:#a3a3a3;--muted:#6e6e70;--rule:#2a2a2c;--xr:#9d94ff;--xr-soft:#9d94ff22;--heat:#ff8f4a;--heat-soft:#ff8f4a33;--e:#6fd3ef;--on-xr:#0b0b0c;color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--font-body);-webkit-font-smoothing:antialiased}
-.page{max-width:1280px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-header.top{display:grid;gap:6px;margin-bottom:20px;max-width:760px}
-.eyebrow{font:500 11px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-h1{font:600 clamp(26px,4vw,38px)/1.05 var(--font-display);letter-spacing:-.01em;margin:4px 0 2px;text-wrap:balance}
-.lede{color:var(--ink-2);margin:0;max-width:66ch}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:20px;align-items:start}
-@media (max-width:980px){.layout{grid-template-columns:minmax(0,1fr)}}
-.iso{background:transparent}
-.iso .iso-plate{padding:46px 18px 46px;box-shadow:0 0 0 1px var(--rule)}
-.iso-figure{margin:0}
-.stage{position:relative;outline:none}
-.stage svg{cursor:default}
-.part{cursor:pointer}
-.part:hover .iso-line{stroke:var(--anatomy-hi)}
-.stage[data-focus] .part{opacity:.38;transition:opacity .25s}
-.stage[data-lifted] .part{opacity:.62}
-.stage[data-focus] .part[data-sel]{opacity:1}
-.part[data-sel] .iso-line,.part[data-sel] .iso-edge{stroke:var(--xr)!important}
-.part[data-sel] .cs{fill:var(--xr-soft)}
-.cf{stroke-width:.5;stroke-linejoin:round}
-.cf[data-shade="0"]{fill:var(--anatomy-shade-0);stroke:var(--anatomy-shade-0)}
-.cf[data-shade="1"]{fill:var(--anatomy-shade-1);stroke:var(--anatomy-shade-1)}
-.cf[data-shade="2"]{fill:var(--anatomy-shade-2);stroke:var(--anatomy-shade-2)}
-.cf[data-shade="3"]{fill:var(--anatomy-shade-3);stroke:var(--anatomy-shade-3)}
-.cf[data-shade="4"]{fill:var(--anatomy-top);stroke:var(--anatomy-top)}
-.cf.glass{fill-opacity:.3;stroke-opacity:.3}
-.cs{fill:var(--anatomy-face)}
-.cs.cut-pb{fill:var(--anatomy-shade-0)}
-.cs.cut-glass{fill:var(--anatomy-mid);fill-opacity:.3}
-.cs.cut-cu{fill:var(--anatomy-shade-1)}
-.cs.cut-be{fill:var(--anatomy-mid);fill-opacity:.5}
-.cs.cut-filter{fill:var(--anatomy-hi);fill-opacity:.35}
-.mirror{fill:var(--anatomy-mid);fill-opacity:.22}
-.det-glow{fill:var(--xr);opacity:calc(var(--img,0)*.35)}
-.filament{stroke:color-mix(in oklab,var(--anatomy-hi),var(--heat) calc(var(--fil,0)*100%))!important;stroke-width:calc(.6px + var(--fil,0)*.5px)}
-.fx{pointer-events:none}
-.fil-glow{fill:url(#g-heat);opacity:calc(var(--fil,0)*.9)}
-.track-glow{fill:none;stroke:var(--heat);stroke-width:2.2;opacity:calc(var(--heat-on,0)*.75);filter:blur(.6px)}
-.spot-glow{fill:url(#g-heat);opacity:var(--heat-on,0)}
-.beam-in path{fill:var(--xr);opacity:calc(var(--beam,0)*.22)}
-.beam-in .wide{opacity:calc(var(--emit,0)*.08)}
-.beam-out .vol{fill:var(--xr);opacity:calc(var(--beam,0)*.14)}
-.beam-out .edge{fill:none;stroke:var(--xr);stroke-width:.6;opacity:calc(var(--beam,0)*.6);vector-effect:non-scaling-stroke}
-.electrons circle{fill:var(--e)}
-.cloud circle{fill:var(--e)}
-.photons line{stroke:var(--xr);stroke-width:1.1;stroke-linecap:round}
-.stage[data-spin] .part[data-part="stator"] .iso-dots circle{fill:var(--heat);opacity:.8;transition:fill .3s}
-.stage[data-hv] .expose-btn .iso-edge{stroke:var(--heat)!important}
-.stage[data-hv] .expose-btn .iso-top{fill:var(--heat-soft)}
-.hover-tag{position:absolute;pointer-events:none;font:500 11px/1 var(--font-mono);padding:5px 7px;background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:3px;white-space:nowrap;transform:translate(10px,-130%);opacity:0;transition:opacity .12s}
-.hover-tag[data-on]{opacity:1}
-.pop{position:absolute;width:min(300px,86%);background:var(--surface);border:1px solid var(--rule);border-radius:6px;box-shadow:0 12px 32px -12px #0006;padding:14px 16px 14px;z-index:5;font-size:13px;line-height:1.5}
-.pop[hidden]{display:none}
-.pop .grp{font:500 10px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-.pop h3{font:600 17px/1.2 var(--font-display);margin:6px 0 2px}
-.pop .role{color:var(--xr);font-weight:500;margin:0 0 6px}
-.pop p{margin:0 0 10px;color:var(--ink-2)}
-.pop dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font:12px/1.4 var(--font-mono)}
-.pop dt{color:var(--muted)}
-.pop dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
-.pop .x{position:absolute;top:8px;right:8px;width:28px;height:28px;border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;border-radius:4px}
-.pop .x:hover{background:var(--rule);color:var(--ink)}
-.lift-layer{cursor:grab;filter:drop-shadow(0 10px 10px rgb(0 0 0 / .28)) drop-shadow(0 2px 2px rgb(0 0 0 / .18))}
-.stage[data-dragging] .lift-layer{cursor:grabbing}
-.stage[data-lifted] svg{touch-action:none}
-.stage[data-lifted] .fx{opacity:.3}
-.ghost{pointer-events:none}
-.view3d{position:absolute;z-index:3;touch-action:none;cursor:grab;filter:drop-shadow(.5px 0 0 var(--ink-2)) drop-shadow(-.5px 0 0 var(--ink-2)) drop-shadow(0 .5px 0 var(--ink-2)) drop-shadow(0 -.5px 0 var(--ink-2)) drop-shadow(0 12px 12px rgb(0 0 0 / .26))}
-.view3d[hidden]{display:none}
-.stage[data-dragging] .view3d{cursor:grabbing}
-.grip{position:absolute;z-index:4;transform:translate(-50%,-100%);font:500 11px/1 var(--font-mono);letter-spacing:.06em;padding:6px 12px;border-radius:999px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:move;touch-action:none;box-shadow:0 4px 10px -6px #0005}
-.grip[hidden]{display:none}
-.grip:hover{color:var(--ink);border-color:var(--muted)}
-.ghost .cf,.ghost .iso-shade,.ghost .iso-top,.ghost .cs,.ghost .tb-body,.ghost .tb-shine,.ghost .tb-shade,.ghost .tb-ring,.ghost .iso-dots,.ghost text,.ghost .iso-halo,.ghost .mirror,.ghost .det-glow{display:none}
-.ghost .iso-fill{fill:var(--anatomy-shade-0);opacity:.55}
-.ghost .iso-line,.ghost .iso-edge{stroke:var(--anatomy-mid)!important;stroke-dasharray:2 2.4;opacity:.8}
-.pop-status{font-size:12px;color:var(--muted)!important;margin:10px 0 0!important}
-.pop-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.pop-actions .btn{height:32px;font-size:12.5px}
-.pop-line{position:absolute;pointer-events:none;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--xr);background:var(--surface);transform:translate(-50%,-50%);z-index:4}
-.pop-line[hidden]{display:none}
-@media (max-width:640px){.pop{position:relative;width:auto;margin:12px 0 26px;box-shadow:none;left:auto!important;top:auto!important}.iso-plate-corner[data-corner="title"]{display:none}}
-.parts{margin-top:14px;display:grid;gap:10px}
-.parts .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.parts .row span{font:500 10px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);width:100%;}
-.chip{font:500 12.5px/1 var(--font-body);padding:7px 10px;border-radius:999px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer}
-.chip:hover{color:var(--ink);border-color:var(--muted)}
-.chip[aria-pressed="true"]{border-color:var(--xr);color:var(--xr);background:var(--xr-soft)}
-button:focus-visible,input:focus-visible,select:focus-visible,.stage:focus-visible{outline:2px solid var(--xr);outline-offset:2px}
-aside.panel{display:grid;gap:14px}
-.card{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px}
-.card h2{font:600 13px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);margin:0 0 12px;display:flex;justify-content:space-between;gap:8px}
-.card h2 small{font-weight:400;letter-spacing:.04em;text-transform:none;color:var(--muted)}
-ol.steps{list-style:none;margin:0 0 12px;padding:0;display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-ol.steps button{width:100%;height:30px;border:1px solid var(--rule);background:transparent;border-radius:4px;color:var(--muted);font:500 12px/1 var(--font-mono);cursor:pointer}
-ol.steps button[aria-current="step"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
-ol.steps button.done{color:var(--ink-2);border-color:var(--muted)}
-.step-text h3{font:600 18px/1.2 var(--font-display);margin:0 0 6px}
-.step-text p{margin:0;color:var(--ink-2);min-height:7.5em}
-.transport{display:flex;gap:8px;margin-top:12px}
-.btn{flex:1;height:36px;border-radius:5px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);font:500 13px/1 var(--font-body);cursor:pointer}
-.btn:hover{border-color:var(--muted)}
-.btn.primary{background:var(--xr);border-color:var(--xr);color:var(--on-xr)}
-.ctl{display:grid;grid-template-columns:62px 1fr 74px;align-items:center;gap:10px;margin:8px 0}
-.ctl label{font:500 12px/1 var(--font-mono);color:var(--ink-2)}
-.ctl output{font:500 13px/1 var(--font-mono);text-align:right;font-variant-numeric:tabular-nums}
-.ctl input[type=range]{width:100%;accent-color:var(--xr)}
-.seg{display:flex;border:1px solid var(--rule);border-radius:5px;overflow:hidden}
-.seg button{flex:1;height:30px;border:0;background:transparent;color:var(--ink-2);font:500 12px/1 var(--font-body);cursor:pointer}
-.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
-.note{font-size:12px;color:var(--muted);margin:8px 0 0}
-.note[data-warn]{color:var(--heat)}
-.read{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin:0}
-.read div{display:grid;gap:2px;min-width:0}
-.read dt{font:500 10.5px/1.2 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.read dd{margin:0;font:500 17px/1.2 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
-.read dd small{font-size:11px;color:var(--muted);font-weight:400}
-.meter{height:6px;border-radius:3px;background:var(--rule);overflow:hidden;margin-top:4px}
-.meter i{display:block;height:100%;width:0;background:var(--heat);transition:width .3s}
-.spec{width:100%;height:auto;display:block;overflow:visible}
-.spec text{font:10px var(--font-mono);fill:var(--muted)}
-.spec .ax{stroke:var(--rule);stroke-width:1}
-.spec .grid{stroke:var(--rule);stroke-width:1;stroke-dasharray:2 3}
-.spec .area{fill:var(--xr);fill-opacity:.18}
-.spec .line{fill:none;stroke:var(--xr);stroke-width:2;stroke-linejoin:round}
-.spec .raw{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 3}
-.spec .mean{stroke:var(--ink);stroke-width:1}
-.spec .cross{stroke:var(--ink-2);stroke-width:1}
-.spec .lab{fill:var(--ink-2)}
-.spec .dot{fill:var(--xr);stroke:var(--surface);stroke-width:2}
-.legend{display:flex;gap:14px;font:11px/1 var(--font-mono);color:var(--ink-2);margin:2px 0 8px}
-.legend i{display:inline-block;width:14px;height:0;border-top:2px solid var(--xr);vertical-align:middle;margin-right:6px}
-.legend i.raw{border-top:2px dashed var(--muted)}
-.wedge-img{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
-.wedge-img div{aspect-ratio:1/1.2;background:#777;transition:background .6s}
-.wedge-lab{display:grid;grid-template-columns:repeat(6,1fr);font:10.5px/1.3 var(--font-mono);color:var(--muted);text-align:center;margin-top:6px;font-variant-numeric:tabular-nums}
-.wedge-lab b{display:block;color:var(--ink);font-weight:500}
-.caption{color:var(--muted);font-size:12.5px;margin:10px 2px 0;max-width:80ch}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-`;
+const ACTS = { filament: 1, cathode: 1, rotor: 2, stator: 2, stem: 2, anode: 4, envelope: 3, "cathode-cable": 3, "anode-cable": 3, console: 3, window: 5, filter: 5, housing: 5, collimator: 5, phantom: 6, detector: 6, stand: 0 };
 
 const defs = `<defs><radialGradient id="g-heat"><stop offset="0" stop-color="#fff3d6"/><stop offset=".25" stop-color="#ffb25e"/><stop offset=".6" stop-color="#ff7a1a" stop-opacity=".45"/><stop offset="1" stop-color="#ff5a00" stop-opacity="0"/></radialGradient></defs>`;
 const fx = (n) => n.toFixed(1);
-const figure = svg
+const svg = build()
   .replace(/(<svg[^>]*>)/, `$1${defs}`)
   .replace(`<g class="beam-out"></g>`, `<g class="beam-out fx"><path class="vol" d="${X.beamOut}"/><path class="edge" d="${X.beamEdges}"/></g>`)
   .replace(`<g class="beam-in"></g>`, `<g class="beam-in fx"><path class="wide" d="${X.beamWide}"/><path d="${X.beamIn}"/></g>`)
@@ -174,175 +18,105 @@ const figure = svg
   .replace(`<g class="electrons"></g>`, `<g class="electrons fx"></g>`)
   .replace(`<g class="cloud"></g>`, `<g class="cloud fx"></g><circle class="fil-glow fx" cx="${fx(X.filament[0])}" cy="${fx(X.filament[1])}" r="8"/>`);
 
-const chips = Object.entries(groups)
-  .map(([group, ids]) => `<div class="row"><span>${group}</span>${ids.map((id) => `<button class="chip" type="button" data-pick="${id}" aria-pressed="false">${PARTS[id].name}</button>`).join("")}</div>`)
-  .join("");
+const CSS = `
+.cs.cut-be{fill:var(--anatomy-mid);fill-opacity:.5}
+.cs.cut-filter{fill:var(--anatomy-hi);fill-opacity:.35}
+.mirror{fill:var(--anatomy-mid);fill-opacity:.22}
+.det-glow{fill:var(--accent);opacity:calc(var(--img,0)*.35)}
+.filament{stroke:color-mix(in oklab,var(--anatomy-hi),var(--heat) calc(var(--f,0)*100%))!important;stroke-width:calc(.6px + var(--f,0)*.5px)}
+.fil-glow{fill:url(#g-heat);opacity:calc(var(--fil,0)*.9)}
+.track-glow{fill:none;stroke:var(--heat);stroke-width:2.2;opacity:calc(var(--hot,0)*.75);filter:blur(.6px)}
+.spot-glow{fill:url(#g-heat);opacity:var(--hot,0)}
+.beam-in path{fill:var(--accent);opacity:calc(var(--beam,0)*.22)}
+.beam-in .wide{opacity:calc(var(--emit,0)*.08)}
+.beam-out .vol{fill:var(--accent);opacity:calc(var(--beam,0)*.14)}
+.beam-out .edge{fill:none;stroke:var(--accent);stroke-width:.6;opacity:calc(var(--beam,0)*.6);vector-effect:non-scaling-stroke}
+.electrons circle,.cloud circle{fill:var(--e)}
+.photons line{stroke:var(--accent);stroke-width:1.1;stroke-linecap:round}
+.stage[data-spin] .part[data-part="stator"] .iso-dots circle{fill:var(--heat);opacity:.8}
+.stage[data-hv] .expose-btn .iso-edge{stroke:var(--heat)!important}
+.stage[data-hv] .expose-btn .iso-top{fill:var(--heat-soft)}
+.tabs{display:flex;gap:4px;margin:-2px 0 8px}
+.tabs button{font:500 11.5px/1 var(--font-mono);padding:6px 10px;border-radius:4px;border:1px solid var(--rule);background:transparent;color:var(--ink-2);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.view{min-height:0;display:grid;align-content:start}
+.view[hidden]{display:none}
+.wedge-img{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.wedge-img div{aspect-ratio:1/1.25;background:var(--rule);transition:background .6s}
+.wedge-lab{display:grid;grid-template-columns:repeat(6,1fr);font:10.5px/1.3 var(--font-mono);color:var(--muted);text-align:center;margin-top:5px}
+.spec{width:100%;height:auto;display:block;overflow:visible;max-height:150px}
+.spec text{font:10px var(--font-mono);fill:var(--muted)}
+.spec .ax{stroke:var(--rule);stroke-width:1}
+.spec .grid{stroke:var(--rule);stroke-width:1;stroke-dasharray:2 3}
+.spec .area{fill:var(--accent);fill-opacity:.18}
+.spec .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round}
+.spec .mean{stroke:var(--ink);stroke-width:1}
+.spec .lab{fill:var(--ink-2)}
+`;
 
-const plate = k.plateHtml({
-  fig: "Fig 1",
-  title: "Rotating-anode X-ray tube · half section",
-  hint: "Click a part to pull it out",
-  readout: "standby",
-  keys: [],
-  caption: "",
-  body: `<div class="stage" tabindex="0" aria-label="X-ray tube figure. Use the part buttons below to open a description of each part.">${figure}<div class="hover-tag" aria-hidden="true"></div><span class="pop-line" hidden></span><div class="pop" role="dialog" aria-live="polite" hidden></div></div>`,
-});
+const controls = `
+<div class="ctl"><label for="kv">kVp</label><input id="kv" type="range" min="40" max="150" step="1" value="80"><output data-out="kv">80 kV</output></div>
+<div class="ctl"><label for="ma">mA</label><input id="ma" type="range" min="50" max="800" step="10" value="320"><output data-out="ma">320 mA</output></div>
+<div class="ctl"><span class="lab">Focus</span><div class="seg" role="group" aria-label="Focal spot"><button type="button" data-focus="small" aria-pressed="false">Small spot</button><button type="button" data-focus="large" aria-pressed="true">Large spot</button></div></div>
+<p class="note" data-note></p>`;
 
-const html = `<title>X-Ray Tube Anatomy</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<style>${k.ISO_CSS}${CSS}</style>
-<div class="page iso" id="iso">
-<header class="top">
-  <span class="eyebrow">Diagnostic radiography · tube anatomy</span>
-  <h1>X-Ray Tube Anatomy</h1>
-  <p class="lede">A standard hospital X-ray tube, cut in half down its axis. Click any part to pull it out of the instrument, turn it over in 3D and read what it does. Run an exposure to follow one burst of X-rays from a hot filament to a picture on the detector.</p>
-</header>
-<div class="layout">
-  <section aria-label="Tube figure">
-    ${plate}
-    <div class="parts" aria-label="Parts">${chips}</div>
-    <p class="caption">Half-section view: the near half of the housing, glass envelope, stator and collimator is cut away. Internal parts are shown whole. Motion is slowed and not to scale. The real anode turns about 57 times a second, and electrons cross the gap in well under a nanosecond.</p>
-  </section>
-  <aside class="panel">
-    <div class="card" aria-label="Exposure sequence">
-      <h2>Exposure sequence <small data-phase>step 1 of 7</small></h2>
-      <ol class="steps">${STEPS_TEXT.map((s, i) => `<li><button type="button" data-step="${i}" aria-label="Step ${i + 1}: ${s.title}">${i + 1}</button></li>`).join("")}</ol>
-      <div class="step-text" aria-live="polite"><h3 data-st-title></h3><p data-st-body></p></div>
-      <div class="transport">
-        <button class="btn" type="button" id="back">Back</button>
-        <button class="btn primary" type="button" id="play">Play</button>
-        <button class="btn" type="button" id="next">Next</button>
-      </div>
-    </div>
-    <div class="card" aria-label="Technique">
-      <h2>Technique <small>set on the console</small></h2>
-      <div class="ctl"><label for="kv">kVp</label><input id="kv" type="range" min="40" max="150" step="1" value="80"><output data-out="kv">80 kV</output></div>
-      <div class="ctl"><label for="ma">mA</label><input id="ma" type="range" min="50" max="800" step="10" value="320"><output data-out="ma">320 mA</output></div>
-      <div class="ctl"><label for="ms">Time</label><input id="ms" type="range" min="0" max="7" step="1" value="3"><output data-out="ms">100 ms</output></div>
-      <div class="ctl"><label>Focus</label><div class="seg" role="group" aria-label="Focal spot"><button type="button" data-focus="small" aria-pressed="false">Small 0.6</button><button type="button" data-focus="large" aria-pressed="true">Large 1.2</button></div><span></span></div>
-      <p class="note" data-note></p>
-    </div>
-    <div class="card" aria-label="Live physics">
-      <h2>What the tube is doing</h2>
-      <dl class="read">
-        <div><dt>Electron speed</dt><dd data-r="beta"></dd></div>
-        <div><dt>Max photon energy</dt><dd data-r="emax"></dd></div>
-        <div><dt>Tube power</dt><dd data-r="power"></dd></div>
-        <div><dt>Charge (mAs)</dt><dd data-r="mas"></dd></div>
-        <div><dt>Electrons / exposure</dt><dd data-r="ne"></dd></div>
-        <div><dt>Becomes X-rays</dt><dd data-r="eff"></dd></div>
-        <div><dt>Filament</dt><dd data-r="fil"></dd></div>
-        <div><dt>Anode speed</dt><dd data-r="rpm"></dd></div>
-        <div style="grid-column:1/-1"><dt>Heat stored in anode</dt><dd data-r="hu"></dd><div class="meter"><i data-r="hubar"></i></div></div>
-      </dl>
-    </div>
-    <div class="card" aria-label="Beam spectrum">
-      <h2>Beam spectrum <small>photons per keV, relative</small></h2>
-      <div class="legend"><span><i></i>After 2.5 mm Al filter</span><span><i class="raw"></i>Before filter</span></div>
-      <svg class="spec" viewBox="0 0 330 170" role="img" aria-label="X-ray energy spectrum"></svg>
-    </div>
-    <div class="card" aria-label="Radiograph of the step wedge">
-      <h2>Image <small data-img-state>no exposure yet</small></h2>
-      <div class="wedge-img">${Array.from({ length: 6 }, () => "<div></div>").join("")}</div>
-      <div class="wedge-lab">${["Open", "2 mm", "4 mm", "6 mm", "8 mm", "10 mm"].map((t) => `<span>${t}<b>–</b></span>`).join("")}</div>
-      <p class="note">Share of the beam's energy that gets through each aluminium step. Darker means more X-rays reached the detector.</p>
-    </div>
-  </aside>
-</div>
-</div>
-<script>
-const DATA = ${JSON.stringify({ X, PARTS, STEPS: STEPS_TEXT, W: WIDTH, H: HEIGHT, MODELS: models(), K: G.scaleOf(P), VIEW: G.viewOf(P) })};
-${LIVE()}
-</script>`;
+const result = `
+<div class="tabs" role="tablist"><button type="button" role="tab" data-tab="img" aria-selected="true">Image</button><button type="button" role="tab" data-tab="spec" aria-selected="false">Spectrum</button></div>
+<div class="view" data-view="img"><div class="wedge-img">${Array.from({ length: 6 }, () => "<div></div>").join("")}</div><div class="wedge-lab">${["Open", "2 mm", "4 mm", "6 mm", "8 mm", "10 mm"].map((t) => `<span>${t}</span>`).join("")}</div><p class="caption-quiet" data-img-note></p></div>
+<div class="view" data-view="spec" hidden><svg class="spec" viewBox="0 0 330 170" role="img" aria-label="X-ray energy spectrum"></svg><p class="caption-quiet">Photon energies in the beam after filtering. The highest energy equals the kVp.</p></div>`;
 
-function LIVE() {
-  return `
-(function(){
-const { X, PARTS, STEPS, W, H, MODELS, K, VIEW } = DATA;
-const root = document.documentElement;
-const iso = document.getElementById("iso");
-const darkQ = matchMedia("(prefers-color-scheme: dark)");
-const syncTheme = () => { const t = root.getAttribute("data-theme"); const dark = t ? t === "dark" : darkQ.matches; iso.setAttribute("data-theme", dark ? "dark" : "light"); };
-syncTheme(); darkQ.addEventListener?.("change", syncTheme); new MutationObserver(syncTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
-
-const $ = (s, el = document) => el.querySelector(s);
-const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const stage = $(".stage");
-const svg = $("svg", stage);
-const NS = "http://www.w3.org/2000/svg";
-const still = matchMedia("(prefers-reduced-motion: reduce)");
-const proj = (p) => [X.O[0] + p[0] * X.ex[0] + p[1] * X.ey[0] + p[2] * X.ez[0], X.O[1] + p[0] * X.ex[1] + p[1] * X.ey[1] + p[2] * X.ez[1]];
+const SCRIPT = `
+const { X, STEPS } = DATA;
 const Wd = X.world;
+const $ = (s) => document.querySelector(s), $$ = (s) => [...document.querySelectorAll(s)];
+const NS = "http://www.w3.org/2000/svg";
 
-/* ---------- model ---------- */
+/* model */
 const MU = [[10,26.2],[15,7.96],[20,3.44],[30,1.128],[40,.5685],[50,.3681],[60,.2778],[80,.2018],[100,.1704],[150,.1378]];
 const muAl = (E) => { if (E <= MU[0][0]) return MU[0][1]; for (let i = 1; i < MU.length; i++) if (E <= MU[i][0]) { const [e0,m0] = MU[i-1], [e1,m1] = MU[i]; const t = Math.log(E/e0)/Math.log(e1/e0); return Math.exp(Math.log(m0) + t*(Math.log(m1)-Math.log(m0))); } return MU[MU.length-1][1]; };
 const RHO = 2.699, FILTER_CM = 0.25;
 function spectrum(kv){
   const bins = [];
   for (let E = 10; E <= kv; E += 0.5){
-    let raw = Math.max(0, (kv - E) / E);
+    const raw = Math.max(0, (kv - E) / E);
     let ch = 0;
     if (kv > 69.5){ const a = Math.pow(kv/69.5 - 1, 1.63) * 9; for (const [e, w] of [[57.98,.58],[59.32,1],[67.2,.34]]) ch += a * w * Math.exp(-((E-e)**2)/(2*0.45**2)); }
-    const f = Math.exp(-muAl(E) * RHO * FILTER_CM);
-    bins.push({ E, raw: raw + ch, fil: (raw + ch) * f });
+    bins.push({ E, fil: (raw + ch) * Math.exp(-muAl(E) * RHO * FILTER_CM) });
   }
   return bins;
 }
-function model(s){
-  const g = 1 + s.kv / 511, beta = Math.sqrt(1 - 1/(g*g));
-  const sec = s.ms / 1000, mas = s.ma * sec;
-  const bins = spectrum(s.kv);
+const tech = { kv: 80, ma: 320, focus: "large" };
+function model(){
+  const g = 1 + tech.kv / 511, beta = Math.sqrt(1 - 1/(g*g));
+  const bins = spectrum(tech.kv);
   let n = 0, ne = 0; for (const b of bins){ n += b.fil; ne += b.fil * b.E; }
-  const mean = ne / n;
   const steps = [0, .2, .4, .6, .8, 1.0].map((t) => { let a = 0; for (const b of bins) a += b.fil * b.E * Math.exp(-muAl(b.E) * RHO * t); return a / ne; });
-  return { beta, mas, power: s.kv * s.ma / 1000, eff: 0.9e-9 * 74 * s.kv * 1000, electrons: mas * 1e-3 / 1.602e-19, hu: 1.4 * s.kv * mas, joules: s.kv * 1000 * s.ma / 1000 * sec, bins, mean, steps };
+  return { beta, eff: 0.9e-9 * 74 * tech.kv * 1000, bins, mean: ne / n, steps };
 }
+let M = model();
 
-/* ---------- state ---------- */
-const MS = [10, 20, 50, 100, 200, 400, 800, 1600];
-const tech = { kv: 80, ma: 320, ms: 100, focus: "large" };
-let M = model(tech);
-let step = 0, playing = !still.matches, stepClock = 0, idleTimer = 0, chosen = false;
-const STEP_SECONDS = 5.2;
-const cur = { fil: .15, spin: 0, hv: 0, heat: 0, emit: 0, beam: 0, img: 0 };
-const TARGET = [
-  { fil: .15, spin: 0, hv: 0, heat: 0, emit: 0, beam: 0, img: 0 },
-  { fil: 1, spin: 0, hv: 0, heat: 0, emit: 0, beam: 0, img: 0 },
-  { fil: 1, spin: 1, hv: 0, heat: 0, emit: 0, beam: 0, img: 0 },
-  { fil: 1, spin: 1, hv: 1, heat: .25, emit: 0, beam: 0, img: 0 },
-  { fil: 1, spin: 1, hv: 1, heat: 1, emit: 1, beam: 0, img: 0 },
-  { fil: 1, spin: 1, hv: 1, heat: 1, emit: 1, beam: 1, img: 0 },
-  { fil: 1, spin: 1, hv: 1, heat: 1, emit: 1, beam: 1, img: 1 },
-];
-let stored = 0, exposed = false;
-const CAP = 300000;
-
-/* ---------- effect layers ---------- */
-const electronsG = $(".electrons", svg), cloudG = $(".cloud", svg), photonsG = $(".photons", svg);
-const mk = (tag, parent, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [k2, v] of Object.entries(attrs)) el.setAttribute(k2, v); parent.appendChild(el); return el; };
-const cloud = Array.from({ length: 22 }, (_, i) => ({ el: mk("circle", cloudG, { r: .75 }), a: Math.random()*6.28, r: Math.random(), w: .6 + Math.random()*1.6 }));
-const electrons = Array.from({ length: 26 }, (_, i) => ({ el: mk("circle", electronsG, { r: .8 }), u: i / 26, j: (Math.random()-.5) }));
-const photons = Array.from({ length: 70 }, () => ({ el: mk("line", photonsG), live: false }));
-const anodeFace = $(".anode-face", svg), rotorG = $(".rotor", svg);
-const rotorRibs = rotorG ? rotorG.querySelector(".iso-solid [opacity], .iso-solid g") : null;
-const dispKV = $('[data-disp="kV"] text', svg), dispMA = $('[data-disp="mA"] text', svg), dispMS = $('[data-disp="ms"] text', svg);
-
+/* effect layers */
+const mk = (tag, parent, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [a, v] of Object.entries(attrs)) el.setAttribute(a, v); parent.appendChild(el); return el; };
+const proj = (p) => [X.O[0] + p[0] * X.ex[0] + p[1] * X.ey[0] + p[2] * X.ez[0], X.O[1] + p[0] * X.ex[1] + p[1] * X.ey[1] + p[2] * X.ez[1]];
+const cloud = Array.from({ length: 22 }, () => ({ el: mk("circle", $(".cloud"), { r: .75 }), a: Math.random()*6.28, r: Math.random(), w: .6 + Math.random()*1.6 }));
+const electrons = Array.from({ length: 26 }, (_, i) => ({ el: mk("circle", $(".electrons"), { r: .8 }), u: i / 26, j: Math.random() - .5 }));
+const photons = Array.from({ length: 70 }, () => ({ el: mk("line", $(".photons")), live: false }));
+const anodeFace = $(".anode-face"), rotorG = $(".rotor");
+const ribHost = rotorG && rotorG.querySelector(".iso-solid");
+if (ribHost){ const faded = ribHost.querySelectorAll(":scope > g"); if (faded.length){ const holder = document.createElementNS(NS, "g"); holder.setAttribute("data-ribs", ""); faded[0].before(holder); faded.forEach((n) => n.remove()); holder.innerHTML = X.rotorFrames[0]; } }
+const fils = $$(".filament");
 const F3 = [Wd.FX, 0, Wd.FZ];
-function spawnPhoton(p){
-  const r = Math.random();
+function spawnPhoton(p, beam){
   let d, len, through = false;
-  if (r < .55) {
+  if (Math.random() < .55){
     let v; do { v = [Math.random()*2-1, Math.random()*2-1, Math.random()*2-1]; } while (Math.hypot(...v) > 1 || Math.hypot(...v) < .2);
     const n = Math.hypot(...v); d = v.map((c) => c / n);
     if (d[0] > -0.08 && d[2] > -0.2) d[0] = -Math.abs(d[0]) - .3;
   } else {
-    const h = cur.beam > .5 ? Wd.APERTURE : Wd.APERTURE * 1.6;
+    const h = beam > .5 ? Wd.APERTURE : Wd.APERTURE * 1.6;
     const tx = Wd.FX + (Math.random()*2-1) * h, ty = (Math.random()*2-1) * h;
     const v = [tx - F3[0], ty, Wd.COLLZ0 - F3[2]]; const n = Math.hypot(...v); d = v.map((c) => c / n);
-    through = Math.abs(tx - Wd.FX) <= Wd.APERTURE && Math.abs(ty) <= Wd.APERTURE && cur.beam > .5;
+    through = Math.abs(tx - Wd.FX) <= Wd.APERTURE && Math.abs(ty) <= Wd.APERTURE && beam > .5;
   }
   if (through) len = (Wd.DET_Z - F3[2]) / d[2];
   else {
@@ -351,582 +125,79 @@ function spawnPhoton(p){
     if (d[2] < -.85 && Math.abs(d[0]) < .25) len = (Wd.COLLZ1 - F3[2]) / d[2];
     if (Math.abs(d[0]) > 1e-6) len = Math.min(len, ((d[0] > 0 ? 123 : -123) - F3[0]) / d[0]);
   }
-  p.d = d; p.len = len; p.t = 0; p.live = true; p.speed = 95 + Math.random()*20;
+  Object.assign(p, { d, len, t: 0, live: true, speed: 95 + Math.random()*20 });
 }
 
-/* ---------- popups and pull-out ---------- */
-const pop = $(".pop", stage), dot = $(".pop-line", stage), tag = $(".hover-tag", stage);
-const ACTS = { filament: 1, cathode: 1, rotor: 2, stator: 2, stem: 2, anode: 4, envelope: 3, "cathode-cable": 3, "anode-cable": 3, console: 3, window: 5, filter: 5, housing: 5, collimator: 5, phantom: 6, detector: 6, stand: 0 };
-let selected = null, lift = null, frozen = false;
-const liftLayer = document.createElementNS(NS, "g");
-liftLayer.setAttribute("class", "lift-layer");
-svg.appendChild(liftLayer);
-const toView = (e) => { const r = svg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; };
-
-function card(id){
-  const p = PARTS[id];
-  const act = ACTS[id];
-  const how = lift && lift.view ? 'Drag the part to turn it in 3D. Shift-drag or use the Move handle to move it. Double-click to square it up again.' : 'Drag the part to move it.';
-  const status = lift ? '<p class="pop-status">' + (lift.wasPlaying ? 'Sequence paused while this part is out. ' : '') + how + '</p>' : '<p class="pop-status">Watching step ' + (step + 1) + ': ' + STEPS[step].title + '.</p>';
-  const actions = lift
-    ? '<div class="pop-actions"><button class="btn" type="button" data-act="back">Put back</button>' + (lift.view ? '<button class="btn" type="button" data-act="reset">Square up</button>' : '') + '<button class="btn primary" type="button" data-act="watch">See it in action</button></div>'
-    : '<div class="pop-actions"><button class="btn" type="button" data-act="pull">Pull it out</button><button class="btn" type="button" data-act="close">Done</button></div>';
-  pop.innerHTML = '<button class="x" type="button" aria-label="Close">×</button><div class="grp">' + p.group + '</div><h3>' + p.name + '</h3><p class="role">' + p.role + '</p><p>' + p.body + '</p><dl>' + p.facts.map(([a,b]) => '<dt>' + a + '</dt><dd>' + b + '</dd>').join("") + '</dl>' + status + actions;
-  $(".x", pop).addEventListener("click", () => { select(null); stage.focus(); });
-  pop.querySelector('[data-act="back"]')?.addEventListener("click", () => { select(null); stage.focus(); });
-  pop.querySelector('[data-act="close"]')?.addEventListener("click", () => { select(null); stage.focus(); });
-  pop.querySelector('[data-act="pull"]')?.addEventListener("click", () => select(id, "pull"));
-  pop.querySelector('[data-act="watch"]')?.addEventListener("click", () => watch(id));
-  pop.querySelector('[data-act="reset"]')?.addEventListener("click", () => resetTurn());
-}
-
-function highlight(id){
-  selected = id;
-  $$(".part", svg).forEach((g) => g.toggleAttribute("data-sel", g.dataset.part === id));
-  $$(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.pick === id)));
-  stage.toggleAttribute("data-focus", Boolean(id));
-}
-
-function pull(id){
-  const groups = $$('.part[data-part="' + id + '"]', svg);
-  if (!groups.length) return;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const g of groups){ const b = g.getBBox(); if (!b.width && !b.height) continue; x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); }
-  const c = [(x0 + x1) / 2, (y0 + y1) / 2];
-  const ghosts = groups.map((g) => { const gh = g.cloneNode(true); gh.setAttribute("class", "ghost"); gh.removeAttribute("data-part"); gh.removeAttribute("data-sel"); gh.setAttribute("aria-hidden", "true"); g.before(gh); return gh; });
-  groups.forEach((g) => liftLayer.appendChild(g));
-  let d = [c[0] - W / 2, c[1] - H * .52]; const n = Math.hypot(...d) || 1; d = [d[0] / n, d[1] / n];
-  const ts = (x1 - x0) > W * .45 ? 1.02 : 1.12;
-  const reach = (x1 - x0) > W * .45 ? 26 : 58;
-  let target = (x1 - x0) > W * .45 ? [d[0] * reach, 10] : [d[0] * reach, d[1] * reach - 24];
-  target = clampOff(target, [x0, y0, x1, y1], c, ts);
-  lift = { id, groups, ghosts, box: [x0, y0, x1, y1], c, off: [0, 0], s: 1, target, ts, wasPlaying: playing, home: false };
-  if (playing) pause();
-  frozen = true;
-  stage.setAttribute("data-lifted", "");
-  animateLift();
-}
-
-function clampOff(off, box, c, s){
-  const [x0, y0, x1, y1] = box;
-  const ax0 = c[0] + (x0 - c[0]) * s, ax1 = c[0] + (x1 - c[0]) * s, ay0 = c[1] + (y0 - c[1]) * s, ay1 = c[1] + (y1 - c[1]) * s;
-  const pad = 6;
-  const lo = [pad - ax0, pad - ay0], hi = [W - pad - ax1, H - pad - ay1];
-  return [lo[0] > hi[0] ? (lo[0] + hi[0]) / 2 : Math.min(hi[0], Math.max(lo[0], off[0])), lo[1] > hi[1] ? (lo[1] + hi[1]) / 2 : Math.min(hi[1], Math.max(lo[1], off[1]))];
-}
-
-function paintLift(){
-  if (!lift) return;
-  const { c, off, s } = lift;
-  liftLayer.setAttribute("transform", "translate(" + (off[0] + c[0]).toFixed(2) + " " + (off[1] + c[1]).toFixed(2) + ") scale(" + s.toFixed(4) + ") translate(" + (-c[0]).toFixed(2) + " " + (-c[1]).toFixed(2) + ")");
-  place();
-}
-
-let liftFrame = 0, liftLast = 0;
-function animateLift(){ if (!liftFrame){ liftLast = 0; liftFrame = requestAnimationFrame(liftStep); } }
-function liftStep(now){
-  liftFrame = 0;
-  if (!lift) return;
-  const dt = liftLast ? Math.min((now - liftLast) / 1000, 1 / 20) : 1 / 60; liftLast = now;
-  const k = still.matches ? 1 : 1 - Math.exp(-dt / .12);
-  const goal = lift.home ? [0, 0] : lift.target, gs = lift.home ? 1 : lift.ts;
-  if (!lift.drag){ lift.off = [lift.off[0] + (goal[0] - lift.off[0]) * k, lift.off[1] + (goal[1] - lift.off[1]) * k]; }
-  lift.s += (gs - lift.s) * k;
-  paintLift();
-  const done = Math.hypot(goal[0] - lift.off[0], goal[1] - lift.off[1]) < (lift.home ? .8 : .15) && Math.abs(gs - lift.s) < (lift.home ? .004 : .001);
-  if (done && lift.home){ seat(); return; }
-  if (!done || lift.drag) liftFrame = requestAnimationFrame(liftStep);
-  else if (!lift.home && !lift.view) loadThree().then(() => { if (lift && !lift.home && !lift.view) enter3D(); }).catch(() => {});
-}
-
-function seat(){
-  if (!lift) return;
-  lift.groups.forEach((g, i) => { lift.ghosts[i].after(g); lift.ghosts[i].remove(); });
-  liftLayer.removeAttribute("transform");
-  liftLayer.style.visibility = "";
-  const resume = lift.wasPlaying && lift.resume;
-  lift = null; frozen = false;
-  stage.removeAttribute("data-lifted");
-  if (resume) play();
-  kick();
-}
-
-function putBack({ resume = true, instant = false } = {}){
-  if (!lift) return;
-  lift.resume = resume;
-  lift.drag = null;
-  if (lift.view){
-    if (instant || still.matches){ exit3D(); lift.home = true; seat(); return; }
-    const l = lift;
-    exit3D(() => { if (lift !== l) return; l.home = true; animateLift(); });
-    return;
-  }
-  lift.home = true;
-  if (instant || still.matches){ seat(); return; }
-  animateLift();
-}
-
-function select(id, from){
-  if (!id){ putBack(); highlight(null); pop.hidden = true; dot.hidden = true; return; }
-  if (lift && lift.id !== id) putBack({ resume: false, instant: true });
-  highlight(id);
-  if (!lift) pull(id);
-  card(id);
-  pop.hidden = false;
-  place();
-  if (from === "chip" && innerWidth <= 640) pop.scrollIntoView({ block: "nearest", behavior: "smooth" });
-}
-
-function watch(id){
-  putBack({ resume: false, instant: true });
-  highlight(id);
-  setStep(ACTS[id] ?? 0, true);
-  play();
-  card(id);
-  pop.hidden = false;
-  place();
-}
-
-function anchorNow(id){
-  const a = X.anchorPx[id];
-  if (!lift || lift.id !== id) return a;
-  const { c, off, s } = lift;
-  return [c[0] + (a[0] - c[0]) * s + off[0], c[1] + (a[1] - c[1]) * s + off[1]];
-}
-function place(){
-  if (!selected || pop.hidden) return;
-  const a = anchorNow(selected);
-  const box = svg.getBoundingClientRect(), sbox = stage.getBoundingClientRect();
-  const px = box.left - sbox.left + a[0] / W * box.width, py = box.top - sbox.top + a[1] / H * box.height;
-  dot.hidden = Boolean(lift && lift.view); dot.style.left = px + "px"; dot.style.top = py + "px";
-  if (innerWidth <= 640){ pop.style.left = pop.style.top = ""; return; }
-  const pw = pop.offsetWidth, ph = pop.offsetHeight, gap = 22;
-  let left, top;
-  if (lift && lift.id === selected){
-    const cx = box.left - sbox.left + (lift.c[0] + lift.off[0]) / W * box.width;
-    left = cx > sbox.width / 2 ? 14 : sbox.width - pw - 14;
-    top = 40;
-  } else {
-    left = px < sbox.width * .55 ? px + gap : px - pw - gap;
-    top = py - ph / 2;
-  }
-  left = Math.max(4, Math.min(sbox.width - pw - 4, left));
-  top = Math.max(4, Math.min(sbox.height - ph - 4, top));
-  pop.style.left = left + "px"; pop.style.top = top + "px";
-}
-addEventListener("resize", place);
-
-liftLayer.addEventListener("pointerdown", (e) => {
-  if (!lift || lift.home) return;
-  e.preventDefault();
-  lift.drag = { start: toView(e), from: [...lift.off], id: e.pointerId };
-  liftLayer.setPointerCapture?.(e.pointerId);
-  stage.setAttribute("data-dragging", "");
-  animateLift();
-});
-liftLayer.addEventListener("pointermove", (e) => {
-  if (!lift || !lift.drag) return;
-  const p = toView(e);
-  const dx = p[0] - lift.drag.start[0], dy = p[1] - lift.drag.start[1];
-  lift.off = clampOff([lift.drag.from[0] + dx, lift.drag.from[1] + dy], lift.box, lift.c, lift.s);
-  lift.target = [...lift.off];
-  paintLift();
-});
-const endDrag = () => { if (lift && lift.drag){ lift.drag = null; stage.removeAttribute("data-dragging"); } };
-liftLayer.addEventListener("pointerup", endDrag);
-liftLayer.addEventListener("pointercancel", endDrag);
-
-svg.addEventListener("click", (e) => {
-  if (e.target.closest(".lift-layer")) return;
-  const g = e.target.closest(".part");
-  if (g) select(g.dataset.part === selected && lift ? null : g.dataset.part);
-  else if (selected) select(null);
-});
-svg.addEventListener("pointermove", (e) => {
-  const g = e.target.closest(".part"); const sbox = stage.getBoundingClientRect();
-  if (g && e.pointerType === "mouse" && !(lift && lift.drag)){
-    tag.textContent = e.target.closest(".lift-layer") ? "Drag to move" : PARTS[g.dataset.part].name;
-    tag.style.left = (e.clientX - sbox.left) + "px"; tag.style.top = (e.clientY - sbox.top) + "px"; tag.setAttribute("data-on", "");
-  }
-  else tag.removeAttribute("data-on");
-});
-svg.addEventListener("pointerleave", () => tag.removeAttribute("data-on"));
-$$(".chip").forEach((c) => c.addEventListener("click", () => select(c.dataset.pick === selected && lift ? null : c.dataset.pick, "chip")));
-addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) select(null); });
-stage.addEventListener("keydown", (e) => {
-  if (!lift || lift.home) return;
-  const step2 = e.shiftKey ? 20 : 6;
-  const m = { ArrowLeft: [-step2, 0], ArrowRight: [step2, 0], ArrowUp: [0, -step2], ArrowDown: [0, step2] }[e.key];
-  if (!m) return;
-  e.preventDefault();
-  if (lift.view && !e.shiftKey){ turnBy(m[0] / 6 * .26, m[1] / 6 * .26); return; }
-  lift.off = clampOff([lift.off[0] + m[0], lift.off[1] + m[1]], lift.box, lift.c, lift.s);
-  lift.target = [...lift.off];
-  paintLift();
-  if (lift.view) layout3D();
-});
-
-/* ---------- 3D inspector ---------- */
-const THREE_URL = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
-let threeLoad = null;
-function loadThree(){
-  if (window.THREE) return Promise.resolve(window.THREE);
-  if (!threeLoad) threeLoad = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = THREE_URL; sc.onload = () => window.THREE ? res(window.THREE) : rej(new Error("three")); sc.onerror = () => { threeLoad = null; rej(new Error("three")); }; document.head.appendChild(sc); });
-  return threeLoad;
-}
-setTimeout(() => loadThree().catch(() => {}), 400);
-
-const v3 = { renderer: null, canvas: null, scene: null, camera: null, pivot: null, meshes: [], c: [0, 0, 0], R: 1, px: 1, mode: null };
-const grip = document.createElement("button");
-grip.type = "button"; grip.className = "grip"; grip.hidden = true; grip.textContent = "Move"; grip.setAttribute("aria-label", "Drag to move the part");
-stage.appendChild(grip);
-
-function palette(){
-  const dark = iso.getAttribute("data-theme") === "dark";
-  return dark
-    ? { hi: 0x5a5a5e, mid: 0x434347, lo: 0x2e2e32, lead: 0x34373f, copper: 0x7a5a42, alu: 0x66696f, glass: 0x7d97c2, heat: 0xff8f4a, ink: 0xe6e6e6, edge: 0xd4d4d4, edgeA: .55, glassA: .2 }
-    : { hi: 0xffffff, mid: 0xeeeeec, lo: 0xd0d0cc, lead: 0xb8bcc6, copper: 0xeccaa8, alu: 0xf2f4f7, glass: 0x8fa9d4, heat: 0xd4561a, ink: 0x2a2a2e, edge: 0x2c2c30, edgeA: .6, glassA: .2 };
-}
-
-function buildModel(T, id){
-  const pal = palette();
-  const grad = new T.DataTexture(new Uint8Array([110, 160, 215, 255]), 4, 1, T.LuminanceFormat);
-  grad.minFilter = grad.magFilter = T.NearestFilter; grad.needsUpdate = true;
-  const mats = {};
-  const mat = (t) => mats[t] ||= (t === "glass"
-    ? new T.MeshToonMaterial({ color: pal.glass, gradientMap: grad, side: T.DoubleSide, transparent: true, opacity: pal.glassA, depthWrite: false })
-    : new T.MeshToonMaterial({ color: pal[t] ?? pal.mid, gradientMap: grad, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
-  const edgeMat = new T.LineBasicMaterial({ color: pal.edge, transparent: true, opacity: pal.edgeA });
-  const glassEdge = new T.LineBasicMaterial({ color: pal.glass, transparent: true, opacity: .7 });
-  const group = new T.Group();
-  const meshes = [];
-  const add = (geo, t) => {
-    const m = new T.Mesh(geo, mat(t)); group.add(m); meshes.push(m);
-    group.add(new T.LineSegments(new T.EdgesGeometry(geo, 28), t === "glass" ? glassEdge : edgeMat));
-  };
-  const pt = (F, s, r, ph) => { const c = Math.cos(ph), n = Math.sin(ph); return [0, 1, 2].map((i) => F.o[i] + F.a[i] * s + r * (c * F.u[i] + n * F.v[i])); };
-  const geoOf = (pos, idx) => { const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g; };
-  for (const p of MODELS[id] || []){
-    if (p.k === "rev"){
-      const full = !p.phi, p0 = full ? 0 : p.phi[0], p1 = full ? Math.PI * 2 : p.phi[1], n = full ? 64 : 36, sec = p.sec;
-      for (let i = 0; i < sec.length; i++){
-        const a = sec[i], b = sec[(i + 1) % sec.length];
-        if (full && i === sec.length - 1) continue;
-        if (a[1] < .01 && b[1] < .01) continue;
-        const pos = [], idx = [];
-        for (let j = 0; j <= n; j++){ const ph = p0 + (p1 - p0) * j / n; pos.push(...pt(p.F, a[0], a[1], ph), ...pt(p.F, b[0], b[1], ph)); }
-        for (let j = 0; j < n; j++){ const q = j * 2; idx.push(q, q + 1, q + 3, q, q + 3, q + 2); }
-        add(geoOf(pos, idx), p.t);
-      }
-      if (!full){
-        const faces = T.ShapeUtils.triangulateShape(sec.map(([s2, r]) => new T.Vector2(s2, r)), []);
-        for (const ph of [p0, p1]){ const pos = []; sec.forEach(([s2, r]) => pos.push(...pt(p.F, s2, r, ph))); add(geoOf(pos, faces.flat()), p.t); }
-      }
-    } else if (p.k === "box"){
-      const g = new T.BoxGeometry(p.b[0] - p.a[0], p.b[1] - p.a[1], p.b[2] - p.a[2]);
-      g.translate((p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2, (p.a[2] + p.b[2]) / 2);
-      add(g, p.t);
-    } else if (p.k === "tube"){
-      const pts = p.pts.map((q) => new T.Vector3(...q));
-      const curve = new T.CatmullRomCurve3(pts, false, "centripetal", 0);
-      const m = new T.Mesh(new T.TubeGeometry(curve, Math.min(400, pts.length * 3), p.r, 12, false), mat(p.t)); group.add(m); meshes.push(m);
-      for (const e of [0, 1]){ const at = pts[e ? pts.length - 1 : 0], dir = curve.getTangent(e); const cap = new T.CircleGeometry(p.r, 16); const mm = new T.Mesh(cap, mat(p.t)); mm.position.copy(at); mm.lookAt(at.clone().add(dir)); group.add(mm); }
-    } else if (p.k === "sph"){
-      const g = new T.SphereGeometry(p.r, 24, 16); g.translate(...p.c); add(g, p.t);
-    } else if (p.k === "quad"){
-      add(geoOf(p.pts.flat(), [0, 1, 2, 0, 2, 3]), p.t);
-    } else if (p.k === "line"){
-      const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(p.pts.flat(), 3));
-      group.add(new T.Line(g, new T.LineBasicMaterial({ color: pal[p.t] ?? pal.ink })));
-    }
-  }
-  const box = new T.Box3().setFromObject(group);
-  const c = box.getCenter(new T.Vector3());
-  let R = 0; group.traverse((o) => { const a = o.geometry && o.geometry.attributes.position; if (!a) return; o.updateMatrixWorld(); for (let i = 0; i < a.count; i++){ const v = new T.Vector3().fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld); R = Math.max(R, v.distanceTo(c)); } });
-  return { group, meshes, c: [c.x, c.y, c.z], R };
-}
-
-function enter3D(){
-  const T = window.THREE;
-  if (!T || !lift || lift.view || !MODELS[lift.id]) return;
-  try {
-    if (!v3.renderer){
-      v3.renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
-      v3.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-      v3.canvas = v3.renderer.domElement; v3.canvas.className = "view3d"; v3.canvas.hidden = true;
-      v3.canvas.setAttribute("aria-label", "3D view of the pulled-out part. Drag to turn it.");
-      stage.appendChild(v3.canvas);
-      wire3D();
-    }
-  } catch (err){ v3.renderer = null; return; }
-  const m = buildModel(T, lift.id);
-  const scene = new T.Scene();
-  const mirror = new T.Group(); mirror.scale.set(1, -1, 1); mirror.add(m.group);
-  mirror.position.set(-m.c[0], m.c[1], -m.c[2]);
-  const pivot = new T.Group(); pivot.add(mirror); scene.add(pivot);
-  const cam = new T.OrthographicCamera(-1, 1, 1, -1, 1, 6000);
-  const Vt = new T.Vector3(VIEW[0], -VIEW[1], VIEW[2]).normalize();
-  cam.up.set(0, 0, 1); cam.position.copy(Vt.multiplyScalar(3000)); cam.lookAt(0, 0, 0);
-  scene.add(cam);
-  scene.add(new T.AmbientLight(0xffffff, .5));
-  const sun = new T.DirectionalLight(0xffffff, .75); sun.position.set(-1.2, 1.6, 1); cam.add(sun); cam.add(sun.target); sun.target.position.set(0, 0, -1);
-  Object.assign(v3, { scene, camera: cam, pivot, meshes: m.meshes, c: m.c, R: m.R });
-  lift.view = true;
-  liftLayer.style.visibility = "hidden";
-  v3.canvas.hidden = false; grip.hidden = false;
-  stage.setAttribute("data-3d", "");
-  layout3D();
-  card(lift.id); place();
-}
-
-function layout3D(){
-  if (!lift || !lift.view) return;
-  const box = svg.getBoundingClientRect(), sbox = stage.getBoundingClientRect();
-  const cs = proj(v3.c);
-  const sx = lift.c[0] + (cs[0] - lift.c[0]) * lift.s + lift.off[0], sy = lift.c[1] + (cs[1] - lift.c[1]) * lift.s + lift.off[1];
-  const px = box.left - sbox.left + sx / W * box.width, py = box.top - sbox.top + sy / H * box.height;
-  v3.px = K * lift.s * box.width / W;
-  const size = Math.ceil(2 * v3.R * v3.px + 24);
-  v3.canvas.style.width = v3.canvas.style.height = size + "px";
-  v3.canvas.style.left = (px - size / 2) + "px"; v3.canvas.style.top = (py - size / 2) + "px";
-  if (v3.size !== size){ v3.renderer.setSize(size, size, false); v3.size = size; }
-  const half = size / 2 / v3.px;
-  Object.assign(v3.camera, { left: -half, right: half, top: half, bottom: -half });
-  v3.camera.updateProjectionMatrix();
-  grip.style.left = px + "px"; grip.style.top = (py - size / 2 + 10) + "px";
-  render3D();
-}
-function render3D(){ if (v3.renderer && lift && lift.view) v3.renderer.render(v3.scene, v3.camera); }
-
-function turnBy(ax, ay){
-  const T = window.THREE; if (!T || !lift || !lift.view) return;
-  const e = v3.camera.matrixWorld.elements;
-  const right = new T.Vector3(e[0], e[1], e[2]).normalize(), up = new T.Vector3(e[4], e[5], e[6]).normalize();
-  const q = new T.Quaternion().setFromAxisAngle(up, ax).multiply(new T.Quaternion().setFromAxisAngle(right, ay));
-  v3.pivot.quaternion.premultiply(q);
-  render3D();
-}
-
-let slerpFrame = 0;
-function slerpHome(done){
-  const T = window.THREE;
-  cancelAnimationFrame(slerpFrame);
-  const from = v3.pivot.quaternion.clone(), to = new T.Quaternion();
-  const ang = 2 * Math.acos(Math.min(1, Math.abs(from.dot(to))));
-  const dur = still.matches ? 0 : Math.min(420, 120 + ang * 160);
-  const t0 = performance.now();
-  const stepQ = (now) => {
-    const u = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - u, 3);
-    v3.pivot.quaternion.copy(from).slerp(to, e); render3D();
-    if (u < 1) slerpFrame = requestAnimationFrame(stepQ); else { slerpFrame = 0; done && done(); }
-  };
-  slerpFrame = requestAnimationFrame(stepQ);
-}
-function resetTurn(){ if (lift && lift.view) slerpHome(); }
-
-function exit3D(done){
-  const finish = () => {
-    if (v3.canvas) v3.canvas.hidden = true;
-    grip.hidden = true;
-    stage.removeAttribute("data-3d");
-    liftLayer.style.visibility = "";
-    if (v3.scene) v3.scene.traverse((o) => { o.geometry && o.geometry.dispose(); });
-    v3.scene = null;
-    if (lift) lift.view = false;
-    done && done();
-  };
-  if (!done || !v3.pivot){ cancelAnimationFrame(slerpFrame); finish(); return; }
-  slerpHome(finish);
-}
-
-function hits(e){
-  const T = window.THREE;
-  const r = v3.canvas.getBoundingClientRect();
-  const ndc = new T.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-  const ray = new T.Raycaster(); ray.setFromCamera(ndc, v3.camera);
-  return ray.intersectObjects(v3.meshes, false).length > 0;
-}
-function wire3D(){
-  const begin = (e, mode) => {
-    e.preventDefault(); e.stopPropagation();
-    v3.mode = { kind: mode, x: e.clientX, y: e.clientY, from: [...lift.off], el: e.currentTarget };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    stage.setAttribute("data-dragging", "");
-  };
-  v3.canvas.addEventListener("pointerdown", (e) => {
-    if (!lift || !lift.view) return;
-    begin(e, e.shiftKey ? "move" : "turn");
-    v3.mode.miss = !hits(e); v3.mode.sx = e.clientX; v3.mode.sy = e.clientY;
-  });
-  grip.addEventListener("pointerdown", (e) => { if (lift && lift.view) begin(e, "move"); });
-  const moveTo = (e) => {
-    if (!v3.mode || !lift) return;
-    const box = svg.getBoundingClientRect();
-    if (v3.mode.kind === "turn"){
-      turnBy((e.clientX - v3.mode.x) * .011, (e.clientY - v3.mode.y) * .011);
-      v3.mode.x = e.clientX; v3.mode.y = e.clientY;
-    } else {
-      const dx = (e.clientX - v3.mode.x) * W / box.width, dy = (e.clientY - v3.mode.y) * H / box.height;
-      lift.off = clampOff([v3.mode.from[0] + dx, v3.mode.from[1] + dy], lift.box, lift.c, lift.s);
-      lift.target = [...lift.off];
-      paintLift(); layout3D();
-    }
-  };
-  const end = (e) => {
-    if (!v3.mode) return;
-    const click = v3.mode.miss && e && e.type === "pointerup" && Math.hypot(e.clientX - v3.mode.sx, e.clientY - v3.mode.sy) < 4;
-    v3.mode = null; stage.removeAttribute("data-dragging");
-    if (click) select(null);
-  };
-  for (const el of [v3.canvas, grip]){
-    el.addEventListener("pointermove", moveTo);
-    el.addEventListener("pointerup", end);
-    el.addEventListener("pointercancel", end);
-  }
-  v3.canvas.addEventListener("dblclick", (e) => { e.preventDefault(); resetTurn(); });
-  v3.canvas.addEventListener("pointermove", (e) => {
-    if (v3.mode || e.pointerType !== "mouse") { tag.removeAttribute("data-on"); return; }
-    const sbox = stage.getBoundingClientRect();
-    if (hits(e)){ tag.textContent = "Drag to turn · Shift-drag to move"; tag.style.left = (e.clientX - sbox.left) + "px"; tag.style.top = (e.clientY - sbox.top) + "px"; tag.setAttribute("data-on", ""); }
-    else tag.removeAttribute("data-on");
-  });
-  v3.canvas.addEventListener("pointerleave", () => tag.removeAttribute("data-on"));
-  addEventListener("resize", layout3D);
-}
-
-/* ---------- sequence UI ---------- */
-const stTitle = $("[data-st-title]"), stBody = $("[data-st-body]"), phase = $("[data-phase]"), playBtn = $("#play");
-function setStep(i, user){
-  step = (i + STEPS.length) % STEPS.length; stepClock = 0;
-  if (step === 0) exposed = false;
-  if (step >= 4 && !exposed){ exposed = true; stored = Math.min(CAP, stored + M.hu); }
-  if (step === 6) renderImage(true);
-  if (step < 6) renderImage(false);
-  stTitle.textContent = STEPS[step].title; stBody.textContent = STEPS[step].body;
-  phase.textContent = "step " + (step + 1) + " of " + STEPS.length;
-  $$("ol.steps button").forEach((b, j) => { b.toggleAttribute("aria-current", j === step); if (j === step) b.setAttribute("aria-current", "step"); b.classList.toggle("done", j < step); });
-  if (user){ chosen = true; if (lift) putBack({ resume: false, instant: true }); pause(); }
-  if (selected && !pop.hidden && !lift) card(selected);
-  kick();
-}
-function pause(){ playing = false; playBtn.textContent = "Play"; }
-function play(){ if (lift) putBack({ resume: false, instant: true }); chosen = true; playing = true; playBtn.textContent = "Pause"; if (step === STEPS.length - 1) setStep(0); kick(); }
-playBtn.addEventListener("click", () => playing ? pause() : play());
-$("#next").addEventListener("click", () => setStep(step + 1, true));
-$("#back").addEventListener("click", () => setStep(step - 1, true));
-$$("ol.steps button").forEach((b) => b.addEventListener("click", () => setStep(+b.dataset.step, true)));
-
-/* ---------- technique ---------- */
-const kv = $("#kv"), ma = $("#ma"), msI = $("#ms"), note = $("[data-note]");
-const fmt = (n, d = 0) => n.toLocaleString("en-GB", { maximumFractionDigits: d, minimumFractionDigits: d });
-function sci(n){ const e = Math.floor(Math.log10(n)); return (n / 10**e).toFixed(1) + "×10<sup>" + e + "</sup>"; }
-function readTech(){
-  tech.kv = +kv.value; tech.ms = MS[+msI.value];
-  const cap = tech.focus === "small" ? 300 : 800;
-  if (+ma.value > cap) ma.value = cap;
-  tech.ma = +ma.value;
-  note.textContent = tech.focus === "small" ? "Small focus: sharper detail, but rated to about 300 mA because the heat lands on a smaller area." : (tech.kv > 69.5 ? "Above 69.5 kVp electrons can knock out tungsten K-shell electrons, so characteristic lines appear in the spectrum." : "Below 69.5 kVp the beam is pure bremsstrahlung: no tungsten K lines.");
-  $('[data-out="kv"]').textContent = tech.kv + " kV"; $('[data-out="ma"]').textContent = tech.ma + " mA"; $('[data-out="ms"]').textContent = tech.ms + " ms";
-  dispKV.textContent = String(tech.kv).padStart(3, "0"); dispMA.textContent = String(tech.ma).padStart(3, "0").slice(-3); dispMS.textContent = String(tech.ms).padStart(3, "0").slice(-4);
-  $$(".filament", svg).forEach((f) => f.style.opacity = f.dataset.fil === tech.focus ? 1 : .35);
-  M = model(tech);
-  $('[data-r="beta"]').innerHTML = fmt(M.beta * 100, 0) + "<small> % of c</small>";
-  $('[data-r="emax"]').innerHTML = tech.kv + "<small> keV</small>";
-  $('[data-r="power"]').innerHTML = fmt(M.power, 1) + "<small> kW</small>";
-  $('[data-r="mas"]').innerHTML = fmt(M.mas, M.mas < 10 ? 1 : 0) + "<small> mAs</small>";
-  $('[data-r="ne"]').innerHTML = sci(M.electrons);
-  $('[data-r="eff"]').innerHTML = fmt(M.eff * 100, 2) + "<small> %</small>";
-  drawSpectrum();
-  if (step === 6) renderImage(true);
-}
-[kv, ma, msI].forEach((el) => el.addEventListener("input", readTech));
-$$("[data-focus]").forEach((b) => b.addEventListener("click", () => { tech.focus = b.dataset.focus; $$("[data-focus]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); readTech(); }));
-
-/* ---------- spectrum chart ---------- */
-const spec = $(".spec");
-const SX = (E) => 30 + (E / 150) * 290, SY = (v) => 140 - v * 106;
-let specBins = [], specMax = 1;
-function drawSpectrum(){
-  specBins = M.bins; specMax = Math.max(...specBins.map((b) => b.fil), 1e-9);
-  const rawMax = Math.max(...specBins.map((b) => Math.min(b.raw, specMax * 3)));
-  const norm = Math.max(specMax, 1e-9);
-  const yv = (v) => SY(Math.min(v / norm, 1.25));
-  const line = specBins.map((b, i) => (i ? "L" : "M") + SX(b.E).toFixed(1) + " " + yv(b.fil).toFixed(1)).join("");
-  const raw = specBins.map((b, i) => (i ? "L" : "M") + SX(b.E).toFixed(1) + " " + yv(b.raw).toFixed(1)).join("");
-  const area = line + "L" + SX(specBins[specBins.length-1].E).toFixed(1) + " 140L" + SX(10) + " 140Z";
-  let g = "";
-  for (const t of [0, 25, 50, 75, 100, 125, 150]) g += '<line class="grid" x1="' + SX(t) + '" x2="' + SX(t) + '" y1="20" y2="140"/><text x="' + SX(t) + '" y="156" text-anchor="middle">' + t + '</text>';
-  g += '<text x="320" y="168" text-anchor="end">photon energy, keV</text>';
-  g += '<line class="ax" x1="30" x2="320" y1="140" y2="140"/>';
-  g += '<clipPath id="spec-clip"><rect x="30" y="18" width="295" height="124"/></clipPath><path class="raw" clip-path="url(#spec-clip)" d="' + raw + '"/><path class="area" d="' + area + '"/><path class="line" d="' + line + '"/>';
-  g += '<line class="mean" x1="' + SX(M.mean) + '" x2="' + SX(M.mean) + '" y1="24" y2="140"/><text class="lab" x="' + (SX(M.mean) + 4) + '" y="30">mean ' + M.mean.toFixed(0) + ' keV</text>';
-  g += '<text class="lab" x="' + (SX(tech.kv) + 3) + '" y="134">' + tech.kv + ' kVp</text>';
-  if (tech.kv > 69.5) { const pk = specBins.find((b) => b.E >= 59.3); g += '<text class="lab" x="' + (SX(59.3) + 6) + '" y="' + Math.max(16, yv(pk.fil) - 4).toFixed(1) + '">W K\u03b1</text>'; }
-  g += '<g class="hov" style="display:none"><line class="cross" y1="20" y2="140"/><circle class="dot" r="4"/><text class="lab hv-t" y="14"></text></g>';
-  g += '<rect x="30" y="10" width="290" height="132" fill="transparent" class="hit"/>';
-  spec.innerHTML = g;
-  const hov = spec.querySelector(".hov"), hit = spec.querySelector(".hit");
-  hit.addEventListener("pointermove", (e) => {
-    const r = spec.getBoundingClientRect(); const xv = (e.clientX - r.left) / r.width * 330; const E = (xv - 30) / 290 * 150;
-    const b = specBins.reduce((best, c) => Math.abs(c.E - E) < Math.abs(best.E - E) ? c : best, specBins[0]);
-    if (!b || E > tech.kv + 2 || E < 8){ hov.style.display = "none"; spec.querySelector(".mean + text").style.opacity = 1; return; }
-    hov.style.display = ""; const x = SX(b.E);
-    hov.querySelector(".cross").setAttribute("x1", x); hov.querySelector(".cross").setAttribute("x2", x);
-    const dt = hov.querySelector(".dot"); dt.setAttribute("cx", x); dt.setAttribute("cy", yv(b.fil));
-    const t = hov.querySelector(".hv-t"); t.textContent = b.E.toFixed(1) + " keV · " + Math.round(b.fil / norm * 100) + " % of peak"; t.setAttribute("x", Math.min(Math.max(x, 90), 260)); t.setAttribute("text-anchor", "middle"); spec.querySelector(".mean + text").style.opacity = 0;
-  });
-  hit.addEventListener("pointerleave", () => { hov.style.display = "none"; spec.querySelector(".mean + text").style.opacity = 1; });
-}
-
-/* ---------- radiograph ---------- */
-const cells = $$(".wedge-img div"), labs = $$(".wedge-lab b"), imgState = $("[data-img-state]");
+/* result views */
+const cells = $$(".wedge-img div"), imgNote = $("[data-img-note]");
 function renderImage(on){
-  cells.forEach((c, i) => {
-    if (!on){ c.style.background = "var(--rule)"; labs[i].textContent = "–"; return; }
-    const T = M.steps[i];
-    const L = 8 + 84 * (1 - Math.pow(T, .55));
-    c.style.background = "hsl(220 6% " + L.toFixed(0) + "%)";
-    labs[i].textContent = Math.round(T * 100) + " %";
-  });
-  imgState.textContent = on ? tech.kv + " kVp · mean " + M.mean.toFixed(0) + " keV" : "no exposure yet";
+  cells.forEach((c, i) => { c.style.background = on ? "hsl(220 6% " + (8 + 84 * (1 - Math.pow(M.steps[i], .55))).toFixed(0) + "%)" : ""; });
+  imgNote.textContent = on ? "Radiograph at " + tech.kv + " kVp. Thicker aluminium lets fewer X-rays through, so its square stays lighter." : "The step wedge's shadow appears here at step 7. Darker means more X-rays reached the detector.";
+}
+const spec = $(".spec");
+const SX = (E) => 30 + (E / 150) * 290, SY = (v) => 140 - v * 112;
+function drawSpectrum(){
+  const bins = M.bins, top = Math.max(...bins.map((b) => b.fil), 1e-9);
+  const yv = (v) => SY(Math.min(v / top, 1.12));
+  const line = bins.map((b, i) => (i ? "L" : "M") + SX(b.E).toFixed(1) + " " + yv(b.fil).toFixed(1)).join("");
+  let g = "";
+  for (const t of [0, 50, 100, 150]) g += '<line class="grid" x1="' + SX(t) + '" x2="' + SX(t) + '" y1="20" y2="140"/><text x="' + SX(t) + '" y="156" text-anchor="middle">' + t + '</text>';
+  g += '<text x="320" y="168" text-anchor="end">photon energy, keV</text><line class="ax" x1="30" x2="320" y1="140" y2="140"/>';
+  g += '<path class="area" d="' + line + 'L' + SX(bins[bins.length-1].E).toFixed(1) + ' 140L' + SX(10) + ' 140Z"/><path class="line" d="' + line + '"/>';
+  g += '<line class="mean" x1="' + SX(M.mean) + '" x2="' + SX(M.mean) + '" y1="18" y2="140"/><text class="lab" x="' + SX(M.mean) + '" y="12" text-anchor="middle">average</text>';
+  g += '<text class="lab" x="' + (SX(tech.kv) + 3) + '" y="134">max</text>';
+  if (tech.kv > 69.5){ const pk = bins.find((b) => b.E >= 59.3); g += '<text class="lab" x="' + (SX(59.3) + 6) + '" y="' + Math.max(16, yv(pk.fil) - 4).toFixed(1) + '">K lines</text>'; }
+  spec.innerHTML = g;
+}
+$$("[data-tab]").forEach((b) => b.addEventListener("click", () => { $$("[data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === b))); $$("[data-view]").forEach((v) => v.hidden = v.dataset.view !== b.dataset.tab); }));
+
+/* captions: the numbers live in words */
+const pct = (n) => n < 1 ? n.toFixed(1) : Math.round(n);
+function caption(i){
+  const base = STEPS[i].body;
+  if (i === 1) return base + (tech.focus === "small" ? " The short filament is lit for the small focal spot." : " The long filament is lit for the large focal spot.");
+  if (i === 3) return base + " At " + tech.kv + " kVp they arrive at about " + Math.round(M.beta * 100) + " % of the speed of light.";
+  if (i === 4) return "The electrons slam into the tungsten focal track. Almost all of their energy becomes heat, which is why the track glows; at " + tech.kv + " kVp only about " + pct(M.eff * 100) + " % becomes X-rays. " + (tech.kv > 69.5 ? "Above tungsten's 69.5 keV K-edge, sharp characteristic lines join the bremsstrahlung." : "Below tungsten's 69.5 keV K-edge the beam is bremsstrahlung only.");
+  return base;
 }
 
-/* ---------- frame loop ---------- */
-let frame = 0, last = 0, rot = 0, visible = true, rpm = 0, photonClock = 0;
-const easeTo = (a, b, dt, tau) => a + (b - a) * (1 - Math.exp(-dt / tau));
-const readout = $("[data-readout]");
-const fils = $$(".filament", svg);
-function tick(now){
-  const dt = frozen ? 0 : (last ? Math.min((now - last) / 1000, 1/20) : 1/60); last = now;
-  const calm = still.matches && !chosen;
-  if (playing){ stepClock += dt; if (stepClock > (step === STEPS.length - 1 ? STEP_SECONDS + 2 : STEP_SECONDS)) setStep(step + 1); }
-  const T = TARGET[step];
-  for (const key in cur) cur[key] = calm ? T[key] : easeTo(cur[key], T[key], dt, key === "spin" ? .9 : key === "heat" && T.heat < cur.heat ? 1.8 : .35);
-  stored = Math.max(0, stored - stored * dt / 240);
+/* controls */
+const kv = $("#kv"), ma = $("#ma"), note = $("[data-note]");
+const dispKV = $('[data-disp="kV"] text'), dispMA = $('[data-disp="mA"] text'), dispMS = $('[data-disp="ms"] text');
+function readTech(){
+  tech.kv = +kv.value;
+  if (tech.focus === "small" && +ma.value > 300) ma.value = 300;
+  tech.ma = +ma.value;
+  $('[data-out="kv"]').textContent = tech.kv + " kV"; $('[data-out="ma"]').textContent = tech.ma + " mA";
+  note.textContent = tech.focus === "small" ? "The small spot gives sharper detail but takes at most about 300 mA, because the heat lands on a smaller area." : "Higher kVp makes faster electrons and more penetrating X-rays; more mA sends more electrons.";
+  dispKV.textContent = String(tech.kv).padStart(3, "0"); dispMA.textContent = String(tech.ma).padStart(3, "0").slice(-3); dispMS.textContent = "100";
+  fils.forEach((f) => f.style.opacity = f.dataset.fil === tech.focus ? 1 : .35);
+  M = model(); drawSpectrum();
+  if (window.sim){ if (sim.step === 6) renderImage(true); sim.refresh(); }
+}
+[kv, ma].forEach((el) => el.addEventListener("input", readTech));
+$$("[data-focus]").forEach((b) => b.addEventListener("click", () => { tech.focus = b.dataset.focus; $$("[data-focus]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); readTech(); }));
+readTech();
 
-  stage.style.setProperty("--fil", cur.fil.toFixed(3));
-  stage.style.setProperty("--heat-on", cur.heat.toFixed(3));
-  stage.style.setProperty("--beam", cur.beam.toFixed(3));
-  stage.style.setProperty("--emit", cur.emit.toFixed(3));
-  stage.style.setProperty("--img", cur.img.toFixed(3));
-  stage.toggleAttribute("data-spin", cur.spin > .05);
-  stage.toggleAttribute("data-hv", T.hv > 0);
-
+/* frame effects */
+let rot = 0, photonClock = 0;
+function onFrame(dt, calm, api){
+  const cur = api.cur;
+  api.stage.toggleAttribute("data-spin", cur.spin > .05);
+  api.stage.toggleAttribute("data-hv", api.step >= 3);
   rot += dt * cur.spin * (calm ? 0 : 2.4);
   const fA = Math.floor(((rot / (Math.PI/4)) % 1) * 12) % 12;
   if (anodeFace && anodeFace.dataset.f != fA){ anodeFace.innerHTML = X.anodeFrames[fA]; anodeFace.dataset.f = fA; }
   const fR = Math.floor(((rot / (Math.PI/12)) % 1) * 12) % 12;
-  if (rotorG && rotorG.dataset.f != fR){ const rib = rotorG.querySelector("[data-ribs]"); if (rib){ rib.innerHTML = X.rotorFrames[fR]; rotorG.dataset.f = fR; } }
-
-  const [fx, fy] = X.filament;
+  const rib = rotorG && rotorG.querySelector("[data-ribs]");
+  if (rib && rotorG.dataset.f != fR){ rib.innerHTML = X.rotorFrames[fR]; rotorG.dataset.f = fR; }
+  const [fx, fy] = X.filament, [sx, sy] = X.spot;
   cloud.forEach((c) => { c.a += dt * c.w * 2; const rr = (2.2 + c.r * 3.2) * cur.fil; c.el.setAttribute("cx", (fx + Math.cos(c.a) * rr).toFixed(2)); c.el.setAttribute("cy", (fy + Math.sin(c.a * 1.3) * rr * .8).toFixed(2)); c.el.setAttribute("opacity", (Math.max(0, cur.fil - .3) * (1 - cur.hv * .6)).toFixed(2)); });
-  const [sx, sy] = X.spot;
   const speed = calm ? 0 : .55 + .5 * (tech.kv / 150);
-  electrons.forEach((e) => { e.u = (e.u + dt * speed) % 1; const u = e.u * e.u; const spread = (1 - e.u) * 2.4 * e.j; e.el.setAttribute("cx", (fx + (sx - fx) * u).toFixed(2)); e.el.setAttribute("cy", (fy + (sy - fy) * u + spread).toFixed(2)); e.el.setAttribute("opacity", (cur.hv * Math.min(1, tech.ma / 300 + .3)).toFixed(2)); });
-
+  electrons.forEach((e) => { e.u = (e.u + dt * speed) % 1; const u = e.u * e.u, spread = (1 - e.u) * 2.4 * e.j; e.el.setAttribute("cx", (fx + (sx - fx) * u).toFixed(2)); e.el.setAttribute("cy", (fy + (sy - fy) * u + spread).toFixed(2)); e.el.setAttribute("opacity", (cur.hv * Math.min(1, tech.ma / 300 + .3)).toFixed(2)); });
   photonClock += dt * cur.emit * (calm ? 0 : 1) * (14 + tech.ma / 25);
   for (const p of photons){
-    if (!p.live){ if (photonClock >= 1){ photonClock -= 1; spawnPhoton(p); } else { p.el.setAttribute("opacity", 0); continue; } }
+    if (!p.live){ if (photonClock >= 1){ photonClock -= 1; spawnPhoton(p, cur.beam); } else { p.el.setAttribute("opacity", 0); continue; } }
     p.t += dt * p.speed;
     if (p.t > p.len + 6){ p.live = false; p.el.setAttribute("opacity", 0); continue; }
     const t1 = Math.min(p.t, p.len), t0 = Math.max(0, Math.min(p.t - 6, p.len));
@@ -934,34 +205,49 @@ function tick(now){
     p.el.setAttribute("x1", a[0].toFixed(1)); p.el.setAttribute("y1", a[1].toFixed(1)); p.el.setAttribute("x2", b[0].toFixed(1)); p.el.setAttribute("y2", b[1].toFixed(1));
     p.el.setAttribute("opacity", (cur.emit * .95).toFixed(2));
   }
-
-  rpm = 3400 * cur.spin;
-  const filC = 900 + 1300 * cur.fil;
-  $('[data-r="fil"]').innerHTML = fmt(filC, 0) + "<small> °C</small>";
-  $('[data-r="rpm"]').innerHTML = fmt(Math.round(rpm / 10) * 10, 0) + "<small> rpm</small>";
-  $('[data-r="hu"]').innerHTML = fmt(stored / 1000, 1) + "<small> kHU of 300</small>";
-  $('[data-r="hubar"]').style.width = (stored / CAP * 100).toFixed(1) + "%";
-  const ro = STEPS[step].title.toLowerCase() + " · " + tech.kv + " kVp";
-  if (readout.textContent !== ro) readout.textContent = ro;
-  fils.forEach((f) => f.style.setProperty("--fil", f.dataset.fil === tech.focus ? cur.fil : cur.fil * .2));
-
-  const busy = playing || Object.keys(cur).some((key) => Math.abs(cur[key] - T[key]) > .002) || cur.spin > .01 || cur.emit > .01 || stored > 1;
-  frame = visible && busy && !frozen ? requestAnimationFrame(tick) : 0;
+  fils.forEach((f) => f.style.setProperty("--f", f.dataset.fil === tech.focus ? cur.fil : cur.fil * .2));
 }
-function kick(){ if (!frame && visible){ last = 0; frame = requestAnimationFrame(tick); } }
-new IntersectionObserver((en) => { visible = en[en.length - 1].isIntersecting; if (visible) kick(); }).observe(stage);
 
-const ribHost = rotorG && rotorG.querySelector(".iso-solid");
-if (ribHost){ const faded = ribHost.querySelectorAll(":scope > g"); if (faded.length){ const holder = document.createElementNS(NS, "g"); holder.setAttribute("data-ribs", ""); faded[0].before(holder); faded.forEach((n) => n.remove()); holder.innerHTML = X.rotorFrames[0]; } }
-
-readTech();
-setStep(0);
-if (playing) playBtn.textContent = "Pause";
-renderImage(false);
-})();
+const sim = window.sim = SimEngine({
+  data: DATA,
+  channels: { fil: .15, spin: 0, hv: 0, hot: 0, emit: 0, beam: 0, img: 0 },
+  targets: [
+    { fil: .15, spin: 0, hv: 0, hot: 0, emit: 0, beam: 0, img: 0 },
+    { fil: 1, spin: 0, hv: 0, hot: 0, emit: 0, beam: 0, img: 0 },
+    { fil: 1, spin: 1, hv: 0, hot: 0, emit: 0, beam: 0, img: 0 },
+    { fil: 1, spin: 1, hv: 1, hot: .25, emit: 0, beam: 0, img: 0 },
+    { fil: 1, spin: 1, hv: 1, hot: 1, emit: 1, beam: 0, img: 0 },
+    { fil: 1, spin: 1, hv: 1, hot: 1, emit: 1, beam: 1, img: 0 },
+    { fil: 1, spin: 1, hv: 1, hot: 1, emit: 1, beam: 1, img: 1 },
+  ],
+  taus: { spin: .9, hot: (c, t) => (t < c ? 1.8 : .35) },
+  caption,
+  onStep: (i) => renderImage(i === 6),
+  onFrame,
+  readout: (api) => STEPS[api.step].title.toLowerCase() + " · " + tech.kv + " kVp",
+  busy: (api) => api.cur.spin > .01 || api.cur.emit > .01,
+});
 `;
-}
 
+const html = pageHtml({
+  title: "X-Ray Tube Anatomy",
+  eyebrow: "Diagnostic radiography · tube anatomy",
+  lede: "A hospital rotating-anode X-ray tube, cut in half. Press Play to follow one exposure, or click any part to pull it out and turn it in 3D. Motion is slowed and not to scale.",
+  figLabel: "Rotating-anode tube · half section",
+  svg,
+  parts: PARTS,
+  steps: STEPS_TEXT,
+  controls,
+  controlsTitle: "Technique",
+  controlsNote: "set on the console",
+  result,
+  resultTitle: "Result",
+  resultNote: "what the detector sees",
+  css: CSS,
+  kitCss: k.ISO_CSS,
+  data: { X, PARTS, STEPS: STEPS_TEXT, ACTS, W: WIDTH, H: HEIGHT, MODELS: models(), K: G.scaleOf(P), VIEW: G.viewOf(P), processName: "Exposure" },
+  script: SCRIPT,
+});
 writeFileSync("xray-tube.html", html);
-writeFileSync("xray-tube-standalone.html", `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${html.split("<style>")[0].replace(/<title>.*?<\/title>/, "<title>X-Ray Tube Anatomy</title>")}<style>${html.split("<style>")[1].split("</style>")[0]}</style></head><body>${html.split("</style>")[1]}</body></html>`);
+writeFileSync("xray-tube-standalone.html", standalone(html));
 console.log("wrote xray-tube.html", (html.length / 1024).toFixed(0) + " KB");

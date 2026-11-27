@@ -44,8 +44,9 @@ const state = (p) => p.evaluate(() => ({ play: document.querySelector("#play")?.
     if (steps.length > 2) await steps[Math.floor(steps.length / 2)].click({ force: true });
     await p.click("#play", { force: true });
     await p.waitForTimeout(900);
-    const a = await snap(p); await p.waitForTimeout(600); const b = await snap(p);
-    const n = moved(a, b);
+    const shotsOf = []; for (let i = 0; i < 6; i++){ shotsOf.push(await snap(p)); await p.waitForTimeout(250); }
+    const changed = new Set(); for (let i = 1; i < shotsOf.length; i++) shotsOf[i].forEach((v, j) => { if (v !== shotsOf[i - 1][j]) changed.add(j); });
+    const n = changed.size;
     if (motion === "no-preference"){ normalMoves = n; check("animates after Play", n > 0, n + " moving elements"); }
     else check("animates after Play with reduced motion on", n >= normalMoves * 0.6 && n > 0, n + " moving elements vs " + normalMoves + " normally");
     if (motion === "reduce") { check("no page errors", !errors.length, errors.join(" | ")); await p.close(); continue; }

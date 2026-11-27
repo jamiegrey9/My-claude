@@ -55,11 +55,12 @@ Real equipment hides its working parts inside shells. Cut every enclosing body (
 envelope, coils, collimator box, detector casing) in half along a vertical plane through its axis,
 remove the near half, and show the internal working parts whole. Learners read this instantly.
 
-`cutLathe(regions, F, { steps, phi })` in `examples/xray-tube/geometry.mjs` draws the back half of
-a body of revolution:
+`cutLathe(regions, F, P, { steps, phi })` in `assets/engine/section.mjs` draws the back half of a
+body of revolution. `cutFrame(o, axis, P)` makes the frame for any axis, with the cut plane facing
+the viewer (for a vertical probe, a horizontal tube, anything between):
 
-- `F` is a frame whose `u` is up and `v` points away from the viewer (for a tube along x:
-  `G.frameOf([0, 0, ZA], [1, 0, 0], [0, 0, 1], [0, -1, 0])`), so `phi` in `[0, π]` is the back half.
+- `F`'s `v` points away from the viewer, so `phi` in `[0, π]` is the back half (the X-ray tube
+  uses `G.frameOf([0, 0, ZA], [1, 0, 0], [0, 0, 1], [0, -1, 0])`; the probe uses `cutFrame`).
 - Each region is a closed section polygon `[[s, r], ...]` (outer profile, then inner profile back),
   with its own cut style (`cut-al`, `cut-pb`, `cut-glass`, `cut-cu`).
 - It returns `{ body, sect }`: the visible facets of the inner and outer surfaces, sorted by depth,
@@ -103,12 +104,16 @@ paints over the cut face of the shell around it.
 
 ## 6. Data the page needs at runtime
 
-Export from the geometry module (see `extras()` and `models()`):
+Export from the geometry module (see `extras()` and `models()` in either example):
 - `O, ex, ey, ez`: the affine projection, for live particles.
 - `anchorPx[id]`: one screen point per part, for its card marker.
 - Screen points of sources (filament, focal spot) and precomputed effect paths and frames.
 - `K = G.scaleOf(P)` and `VIEW = G.viewOf(P)` for lining up the 3D inspector.
 - `models()`: the 3D primitives for every part (see `interaction.md`).
+
+Use real dimensions in millimetres, from the fact sheet. Exaggerate only what would be
+invisible (a 0.05 mm window) and say so. Small mechanisms inside a big scene are fine: zoom to them
+in the steps that need them (`engine.md`, "Zoom per step").
 
 ## 7. Themes
 

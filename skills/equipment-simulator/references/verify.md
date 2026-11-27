@@ -44,6 +44,10 @@ Read every screenshot. In particular:
 - phone (Playwright `devices["iPhone 13"]`): stacked layout, card under the figure, touch drag
   via CDP `Input.dispatchTouchEvent`.
 
+Random simulations (counting, decays) vary between frames; `check_flow` sums motion over six
+snapshots, so it is stable for them. If a part chip cannot be clicked in a zoomed step, the drawing
+is spilling over the dock: the SVG must clip.
+
 Clicking animated SVG parts in Playwright needs `{ force: true }`, because the paths keep
 changing. If a chip click scrolls the page, scroll the stage back into view before taking
 coordinates.

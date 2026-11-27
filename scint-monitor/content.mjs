@@ -1,0 +1,120 @@
+export const PARTS = {
+  window: {
+    name: "Entrance window", group: "Probe",
+    role: "Lets low-energy photons in and keeps light out.",
+    body: "A sheet of aluminium foil only about 0.05 mm thick (14 mg/cm²) across the probe face. It has to be thin, because the photons this probe looks for carry as little as 15–35 keV and would be stopped by anything thicker. It also has to be light-tight: the crystal behind it makes light, so room light leaking in would swamp the signal. It is fragile, so it is never pressed onto surfaces.",
+    facts: [["Material", "Aluminium, 14 mg/cm²"], ["Thickness", "≈ 0.05 mm"], ["Area", "≈ 8 cm²"]],
+  },
+  crystal: {
+    name: "NaI(Tl) crystal", group: "Probe",
+    role: "Turns each absorbed photon into a flash of light.",
+    body: "A disc of sodium iodide with a trace of thallium, 32 mm across but only 2.5 mm thick. When it absorbs a photon it gives off a brief flash of blue light, about 38 light photons for every keV absorbed. Being thin is deliberate: it stops nearly all low-energy photons from I-125 but lets many higher-energy background gammas pass straight through, which keeps the background count low. Sodium iodide absorbs moisture from the air, so the crystal is sealed in a can.",
+    facts: [["Size", "32 mm × 2.5 mm"], ["Light", "≈ 38 photons per keV, blue (415 nm)"], ["Flash length", "≈ 0.23 µs"]],
+  },
+  "optical-window": {
+    name: "Optical window", group: "Probe",
+    role: "Carries the light from crystal to photomultiplier.",
+    body: "A glass disc that closes the crystal can on the light side. It is optically coupled to the crystal and to the photomultiplier face, so the flash passes into the tube instead of bouncing back. The crystal's other faces are lined with a white reflector to send stray light this way.",
+    facts: [["Material", "Glass, optically coupled"]],
+  },
+  lead: {
+    name: "Lead shield", group: "Probe",
+    role: "Cuts down counts from photons arriving from other directions.",
+    body: "A short lead sleeve, about 3.1 mm thick, around the crystal. Photons from the floor, walls or a nearby source that arrive from the side are absorbed before they reach the crystal, so what the probe counts comes mainly from the surface in front of its window.",
+    facts: [["Thickness", "≈ 3.1 mm Pb"]],
+  },
+  photocathode: {
+    name: "Photocathode", group: "Photomultiplier",
+    role: "Turns light into electrons.",
+    body: "A very thin light-sensitive layer (typically bialkali) on the inside of the photomultiplier's glass face. When a light photon hits it, there is about a one-in-four chance that an electron is knocked out (the photoelectric effect). A flash of about a thousand light photons therefore gives a small group of photoelectrons, far too few to measure without the dynodes that follow.",
+    facts: [["Quantum efficiency", "≈ 25 %"]],
+  },
+  dynodes: {
+    name: "Dynode chain and anode", group: "Photomultiplier",
+    role: "Multiplies a few electrons into a pulse a million times larger.",
+    body: "About ten curved electrodes (dynodes), each held roughly 65 V more positive than the one before. Electrons from the photocathode are pulled onto the first dynode and each one knocks out several more. Those are pulled onto the next dynode, and so on down the chain, until a cloud of hundreds of thousands to millions of electrons lands on the anode as a current pulse.",
+    facts: [["Stages", "≈ 10"], ["Gain", "≈ 10⁵ – 10⁶"]],
+  },
+  pmt: {
+    name: "Photomultiplier tube", group: "Photomultiplier",
+    role: "Light detector and amplifier in one evacuated glass tube.",
+    body: "An evacuated glass tube holding the photocathode, a focusing electrode, the dynode chain and the anode. The vacuum lets the electrons travel freely between electrodes. The output pulse is proportional to the light in the flash, so it also tells you roughly how much energy the photon deposited.",
+    facts: [["Inside", "Vacuum"], ["Pulse", "Proportional to the light"]],
+  },
+  "magnetic-shield": {
+    name: "Magnetic shield", group: "Photomultiplier",
+    role: "Keeps magnetic fields from steering the electrons.",
+    body: "A sleeve of mu-metal, a nickel-iron alloy, around the photomultiplier. The electrons inside travel slowly between dynodes and even the Earth's magnetic field or a nearby magnet could bend them off course. The shield keeps the gain steady whichever way the probe is held.",
+    facts: [["Material", "Mu-metal"]],
+  },
+  divider: {
+    name: "Voltage divider", group: "Probe",
+    role: "Shares the high voltage between the dynodes.",
+    body: "A chain of resistors that splits the high voltage from the meter, about 650 V, into equal steps for each dynode. The capacitor at the end supplies the burst of charge each pulse needs, so the dynode voltages do not sag at high count rates.",
+    facts: [["High voltage", "≈ 650 V"]],
+  },
+  housing: {
+    name: "Probe body and connector", group: "Probe",
+    role: "Light-tight case, handle and electrical connection.",
+    body: "An aluminium tube about 50 mm across and 180 mm long that keeps the inside dark and protects the fragile parts. The coaxial connector at the back carries the high voltage in and the pulses out along the same cable.",
+    facts: [["Size", "≈ 50 × 180 mm"], ["Weight", "≈ 0.8 kg"]],
+  },
+  cable: {
+    name: "Probe cable", group: "Meter",
+    role: "Brings high voltage to the probe and pulses back.",
+    body: "A shielded coaxial cable. The meter's supply pushes about 650 V down it to the divider. The pulses from the anode travel back along the same conductor and are separated from the steady high voltage by a capacitor inside the meter.",
+    facts: [["Carries", "HV in, pulses out"]],
+  },
+  meter: {
+    name: "Ratemeter and electronics", group: "Meter",
+    role: "Supplies the probe, counts its pulses and works out the rate.",
+    body: "Inside the case: a high-voltage supply for the probe, an amplifier that shapes each pulse, and a discriminator that only passes pulses above a set threshold so that electronic noise is ignored. A counter then turns the accepted pulses into a count rate, averaged over a few seconds so that the display is steady enough to read.",
+    facts: [["Size", "≈ 250 × 85 × 160 mm"], ["Battery", "Li-ion, > 12 h"]],
+  },
+  display: {
+    name: "Display", group: "Meter",
+    role: "Shows the count rate as digits and a bar.",
+    body: "A backlit LCD with the count rate in large digits and a bar that grows with the rate, easier to watch while your eyes are on the probe. It can show counts per second (cps), counts per minute, or an estimated dose rate in µSv/h for a calibrated probe. Compare the reading with background: a clear rise means contamination.",
+    facts: [["Units", "cps · cpm · µSv/h"]],
+  },
+  speaker: {
+    name: "Speaker", group: "Meter",
+    role: "Clicks once for every counted pulse.",
+    body: "The click rate lets you survey by ear while watching the probe, not the display. A rising crackle as you pass over a spot tells you where the contamination is before the averaged display has caught up.",
+    facts: [["Clicks", "One per counted pulse"]],
+  },
+  keypad: {
+    name: "Keypad", group: "Meter",
+    role: "Power, units, alarm and backlight.",
+    body: "Keys switch the meter on, change units, set an alarm level and light the display. An alarm set a little above background sounds when the probe passes over contamination.",
+    facts: [["Alarm", "User-set level"]],
+  },
+  spill: {
+    name: "Contamination", group: "Work area",
+    role: "Radioactive solution spilt on the absorbent tray liner.",
+    body: "A few drops of iodine-125 solution. I-125 decays by electron capture and gives off photons of about 27–35 keV. A thin-crystal probe like this one is the right tool for it. You cannot see radioactivity, so the wet patch is all that shows; only the monitor can tell you where it is and how much.",
+    facts: [["Nuclide", "I-125 (or Tc-99m)"], ["Photons", "27–35 keV (Tc-99m: 140 keV)"], ["This example", "≈ 30 Bq/cm²"]],
+  },
+  vial: {
+    name: "Tipped vial", group: "Work area",
+    role: "Where the spill came from.",
+    body: "A stock vial knocked over on the tray. Working over an absorbent-lined tray keeps any spill contained and easy to clean up. Monitoring the tray, gloves and bench before and after work is how spills like this are caught.",
+    facts: [["Good practice", "Work over a lined tray"]],
+  },
+  tray: {
+    name: "Spill tray", group: "Work area",
+    role: "Contains spills.",
+    body: "A shallow tray lined with absorbent paper that has a waterproof backing. A spill soaks into the liner instead of spreading, and the liner can be lifted out and disposed of as radioactive waste.",
+    facts: [["Liner", "Absorbent, plastic-backed"]],
+  },
+};
+
+export const STEPS_TEXT = [
+  { title: "Background", body: "Before anything is spilt, the meter still counts a few pulses each second, about 4–8 cps. They come from cosmic rays and natural radioactivity in the building. Every reading is judged against this background." },
+  { title: "Contamination", body: "A drop of I-125 solution is spilt on the tray. Its atoms decay and give off photons of about 27–35 keV in every direction. Only those heading up into the probe window can be counted." },
+  { title: "Through the window", body: "Photons heading for the probe pass the aluminium window, only about 0.05 mm thick. Anything thicker would stop these low-energy photons; the foil also keeps out room light, which would swamp the crystal's tiny flashes." },
+  { title: "A flash in the crystal", body: "" },
+  { title: "Light becomes electrons", body: "The flash crosses the optical window to the photocathode. There, roughly one light photon in four knocks out an electron, so each flash turns into a small group of photoelectrons." },
+  { title: "Electron multiplication", body: "The dynodes are each about 65 V more positive than the last. Every electron that strikes one knocks out several more, so after about ten dynodes the group has grown roughly a million times and arrives at the anode as a current pulse." },
+  { title: "Count and click", body: "" },
+];

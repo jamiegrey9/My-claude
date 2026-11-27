@@ -1,7 +1,8 @@
 # Interaction
 
-All code referred to here is in `examples/xray-tube/build.mjs` (the `LIVE()` script) and
-`examples/xray-tube/geometry.mjs`. Function names are given so you can find and adapt them.
+All of this is implemented in `assets/engine/engine.js` (functions named below) and used through
+`SimEngine(cfg)` (`engine.md`). Read this file when you need to change how it behaves. Models come
+from each build's `geometry.mjs` (`models()`).
 
 ## Contents
 1. The process engine
@@ -13,7 +14,8 @@ All code referred to here is in `examples/xray-tube/build.mjs` (the `LIVE()` scr
 
 ## 1. The process engine
 
-- `STEPS`: title and 2–3 sentence caption per step (`content.mjs`).
+- `STEPS`: title and 2–3 sentence caption per step (`content.mjs`); `cfg.caption` can replace a
+  caption with a live sentence.
 - `TARGET[step]`: the value every visual channel should reach at that step, 0–1 each
   (e.g. `fil, spin, hv, heat, emit, beam, img`). The frame loop eases `cur` toward `TARGET`
   (`easeTo`, with slower time constants for things with inertia such as spin-up and cooling).

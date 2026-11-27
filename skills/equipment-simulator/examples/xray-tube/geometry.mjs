@@ -1,6 +1,6 @@
-import * as k from "./kit/iso-kit.mjs";
-import * as G from "./kit/lathe.mjs";
-import { tubePieces, tubeSvg } from "./kit/tube.mjs";
+import * as k from "../../assets/kit/iso-kit.mjs";
+import * as G from "../../assets/kit/lathe.mjs";
+import { tubePieces, tubeSvg } from "../../assets/kit/tube.mjs";
 
 export const WIDTH = 640;
 export const HEIGHT = 470;

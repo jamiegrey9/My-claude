@@ -11,9 +11,11 @@ something catches their eye they click it: the part lifts out of the machine, th
 in 3D, and a short card says what it is and why it is there. "See it in action" drops them back
 into the step where that part matters. That is the whole product. Everything below serves it.
 
-The reference build is the X-ray tube in `examples/xray-tube/` (rotating-anode tube in half
-section, 17 parts, a 7-step exposure, pull-out and 3D turning). Read its files when you need a
-working pattern; the sections below say where each pattern lives.
+Two reference builds ship with the skill, both on the bundled engine:
+`examples/xray-tube/` (rotating-anode X-ray tube: continuous effects, rotation, beam, spectrum) and
+`examples/scint-monitor/` (NaI(Tl) contamination probe and ratemeter: zoom per step, a moving
+probe, event chains from photon to click, a live meter and a pulse trace). Open the closer one
+before you start.
 
 ## The four promises
 
@@ -53,16 +55,18 @@ Work in this order; the early steps decide most of the quality.
    "Housing", "Readout chain"). For each: name, one-line role, 3–5 sentence body, 2–3 facts, and
    the process step where it does its job (this drives "See it in action").
 4. **Draw the device** as an isometric half-section with the bundled Anatomy kit
-   (`assets/kit/`). Read `references/drawing.md`: the cut-away renderer, painter's order, which
-   parts to show whole inside a cut body, and the effect layers (`.fx`) for particles and glow.
-5. **Build 3D models** for every part from the same dimensions the drawing uses (lathe profiles,
-   boxes, tubes), so a pulled-out part can be turned without changing shape. See
-   `references/interaction.md`, "3D inspector".
-6. **Assemble the one-screen page** from `assets/shell.html`: header line, figure card with a
-   part dock along its bottom, and a slim right rail with the process card, at most 2–3 controls
-   and one "result" view. Wire the interactions in `references/interaction.md`.
-7. **Verify** with the bundled scripts and real screenshots (`references/verify.md`). Fix and
-   re-run until both scripts pass, then publish.
+   (`assets/kit/`) and `assets/engine/section.mjs`, at real dimensions in millimetres. Read
+   `references/drawing.md`: the cut-away renderer, painter's order, which parts to show whole
+   inside a cut body, and the effect layers (`.fx`) for particles and glow. Render a quick preview
+   and look at it, at 1× and zoomed, before writing any animation.
+5. **Build 3D models** for every part from the same dimensions the drawing uses (`models()`:
+   lathe profiles, boxes, tubes, quads), so a pulled-out part can be turned without changing shape.
+6. **Assemble the page with the engine** (`references/engine.md`): `pageHtml()` gives the
+   one-screen layout, part dock, process card, cards, pull-out, freeze and 3D inspector; your
+   device script supplies the channels per step, captions, effects (`onFrame`), 2–3 controls and
+   the result view. Zoom into small mechanisms for the middle steps.
+7. **Verify** with the bundled scripts and real screenshots of every step (`references/verify.md`).
+   Fix and re-run until both scripts pass, then publish.
 
 Size the job honestly: a single detector or a small instrument is a few hours; a large machine
 with several subsystems (a linac, a CT gantry) is more. Say so before starting, and if it is very
@@ -70,7 +74,8 @@ large, propose the core subsystem first.
 
 ## Screen layout (one screen, no scroll)
 
-Use `assets/shell.html` as the skeleton. Why each choice:
+`pageHtml()` builds this layout (`assets/shell.html` is the same layout as a static template, for
+reference or for a build without the engine). Why each choice:
 
 - **Figure dominant (about two thirds of the width).** The device is the teacher; it must be big
   enough that small parts are clickable on a laptop.
@@ -92,8 +97,8 @@ Use `assets/shell.html` as the skeleton. Why each choice:
 
 ## Interaction model
 
-Read `references/interaction.md` for the code patterns (state machine, pull-out, freeze, 3D
-inspector, "See it in action"). The rules, and why:
+The engine implements all of this (`references/engine.md`); `references/interaction.md` explains
+how it works when you need to change it. The rules, and why:
 
 - **Click a part → it pulls out.** It lifts off the drawing with a shadow and slight enlargement,
   a dashed outline marks its empty slot, the card opens, and after the lift the 3D view takes
@@ -156,12 +161,13 @@ sources (`build.mjs`, `geometry.mjs`, `content.mjs`, `facts.md`) next to the out
 
 ## Reference files
 
+- `references/engine.md`: the engine and page builder, the device-script API, and the patterns
+  (captions that carry numbers, event chains, zoom per step, moving parts, result views).
 - `references/accuracy.md`: the fact sheet, sourcing, phrasing values, and accuracy traps.
 - `references/drawing.md`: Anatomy kit essentials, half-section rendering, painter's order,
   effect layers, projection maths.
 - `references/interaction.md`: pull-out, freeze, ghost slot, 3D inspector, "See it in action",
   sequence engine.
 - `references/verify.md`: the check scripts, screenshots, testing three.js offline, phone checks.
-- `examples/xray-tube/`: the full reference build. Note that it predates the one-screen and
-  few-numbers rules (it scrolls and has a readout grid); copy its drawing and interaction code,
-  not its page layout.
+- `examples/xray-tube/`, `examples/scint-monitor/`: complete builds on the engine. Run
+  `node build.mjs` in either folder. `scint-monitor/facts.md` is a worked fact sheet.
