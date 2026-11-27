@@ -504,3 +504,76 @@ export function extras() {
     btn: at([-150 + 58, 18 + 31, 26.4]),
   };
 }
+
+export function models() {
+  const Fr = (F) => ({ o: F.o, a: F.a, u: F.u, v: F.v });
+  const ax = Fr(AX);
+  const HALF = [0, Math.PI];
+  const rev = (F, sec, t, phi = null) => ({ k: "rev", F: Fr(F), sec: sec.map(([s, r]) => [s, r]), t, phi });
+  const disc = (F, s0, s1, r, t) => rev(F, [[s0, 0], [s0, r], [s1, r], [s1, 0]], t);
+  const solid = (F, prof, t) => rev(F, [[prof[0][0], 0], ...prof, [prof[prof.length - 1][0], 0]], t);
+  const box = (x0, y0, z0, x1, y1, z1, t) => ({ k: "box", a: [x0, y0, z0], b: [x1, y1, z1], t });
+  const plan = (p, z0, z1, t) => box(p.x, p.y, z0, p.x + p.w, p.y + p.d, z1, t);
+  const vert = (x, y) => ({ o: [x, y, 0], a: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] });
+  const coneS = (r) => ANODE_S + (r - 8) * Math.tan(ANGLE);
+  const ring = (r, t) => ({ k: "line", t, pts: Array.from({ length: 97 }, (_, i) => G.pointOf(AX, coneS(r) - 0.05, r, (i / 96) * Math.PI * 2)) });
+  const M = {};
+  M.housing = [
+    rev(ax, [[-129, 0], [-129, 26], [-127.6, 36], [-124.2, 43], [-118, 46], [118, 46], [124.2, 43], [127.6, 36], [129, 26], [129, 0], [126.6, 0], [126.6, 25], [125.2, 34], [122, 41.2], [117, 44], [-117, 44], [-122, 41.2], [-125.2, 34], [-126.6, 25], [-126.6, 0]], "mid", HALF),
+    rev(ax, [[-126.6, 0], [-126.6, 25], [-125.2, 34], [-122, 41.2], [-117, 44], [117, 44], [122, 41.2], [125.2, 34], [126.6, 25], [126.6, 0], [125, 0], [125, 24], [123.6, 32.6], [120.6, 39.6], [116, 42.4], [-116, 42.4], [-120.6, 39.6], [-123.6, 32.6], [-125, 24], [-125, 0]], "lead", HALF),
+    rev(ax, [[-10, 46], [-10, 50], [10, 50], [10, 46]], "mid", HALF),
+  ];
+  M.stator = [rev(ax, [[52, 19.5], [52, 31], [92, 31], [92, 19.5]], "copper", HALF)];
+  M.envelope = [rev(ax, [...GLASS_OUT, ...GLASS_IN], "glass", HALF)];
+  M.rotor = [disc(ax, 96, 108, 4.5, "mid"), disc(ax, 102, 106, 7, "mid"), solid(ax, [[44, 10], [46, 12.5], [94, 12.5], [96, 10]], "copper")];
+  M.stem = [disc(ax, 30, 44, 3.6, "mid"), disc(ax, 40, 44.5, 6, "mid")];
+  const slots = [];
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; slots.push({ k: "line", t: "ink", pts: [G.pointOf(AX, coneS(16) - 0.05, 16, a), G.pointOf(AX, coneS(ANODE_R) - 0.08, ANODE_R - 0.1, a)] }); }
+  M.anode = [solid(ax, [[22, 22], [24, 24.5], [29, 24.5], [31, 22]], "lo"), rev(ax, [[ANODE_S - 4, 0], ...ANODE_PROFILE, [22, 0]], "hi"), disc(ax, ANODE_S - 7, ANODE_S - 3.8, 5, "mid"), disc(ax, ANODE_S - 8.5, ANODE_S - 7, 2.6, "mid"), ring(TRACK_R - 1.6, "heat"), ring(TRACK_R + 1.6, "heat"), ...slots];
+  const armF = G.frameAlong([-58, 0, ZA], G.unit3([46, 0, -(ZA - FZ)]));
+  const len = Math.hypot(46, ZA - FZ);
+  M.cathode = [disc(ax, -104, -100, 9, "mid"), disc(ax, -100, -60, 4, "mid"), disc(ax, -62, -56, 6, "mid"), disc(Fr(armF), 0, len, 2.8, "mid"), disc(Fr(CUP_F), -14, CUP.s0, 5, "mid"),
+    rev(Fr(CUP_F), [[CUP.s0, 0], [CUP.s0, CUP.r], [CUP.s1, CUP.r], [CUP.s1, 5.6], [CUP.s1 - 3.2, 5.6], [CUP.s1 - 3.2, 0]], "hi", HALF)];
+  M.filament = [-1.4, -4.1].map((y, i) => {
+    const L2 = i ? 6 : 3.4;
+    return { k: "tube", r: 0.28, t: "heat", pts: Array.from({ length: 121 }, (_, j) => { const t = j / 120, a = t * Math.PI * 2 * 7; return [CUP.s1 - 1.6 + Math.cos(a) * 0.9, y + Math.sin(a) * 0.9, FZ - L2 / 2 + L2 * t]; }) };
+  });
+  M.filament.push(box(CUP.s1 - 3.2, -6, FZ - 1, CUP.s1 - 2.6, 0, FZ + 1, "mid"));
+  const PF = { o: [FX, 0, ZA - 42], a: [0, 0, -1], u: [1, 0, 0], v: [0, -1, 0] };
+  M.window = [rev(PF, [[2, 12], [2, 20], [9, 20], [9, 12]], "mid", HALF), rev(PF, [[3.5, 0], [3.5, 12], [4.5, 12], [4.5, 0]], "glass", HALF)];
+  M.filter = [rev(PF, [[9, 0], [9, 16], [10.6, 16], [10.6, 0]], "alu", HALF)];
+  const { x0, x1, y0, z0, z1 } = COLL;
+  const t = 2.2;
+  const up = 88, lo = 58;
+  const upGap = 12 * (FZ - up) / (FZ - COLL.z0), loGap = APERTURE * (FZ - lo) / (FZ - COLL.z0);
+  const lampF = { o: [COLL.x1 - 2.2, -15, 79], a: [-1, 0, 0], u: [0, 0, 1], v: [0, -1, 0] };
+  M.collimator = [
+    box(x0, y0, z0, x1, y0 + t, z1, "mid"), box(x1 - t, y0, z0, x1, 0, z1, "mid"), box(x0, y0, z0, x0 + t, 0, z1, "mid"),
+    box(x0, y0, z0, FX - APERTURE - 4, 0, z0 + 3, "mid"), box(FX + APERTURE + 4, y0, z0, x1, 0, z0 + 3, "mid"),
+    box(x0, y0, z1 - 3, FX - 12, 0, z1, "mid"), box(FX + 12, y0, z1 - 3, x1, 0, z1, "mid"),
+    ...[[up, upGap, 4], [lo, loGap, 5]].flatMap(([z, g, h]) => [box(x0 + 2.4, y0 + 2.4, z, FX - g, 0, z + h, "lead"), box(FX + g, y0 + 2.4, z, x1 - 2.4, 0, z + h, "lead")]),
+    { k: "quad", t: "glass", pts: [[FX - 13, y0 + 2.4, 66], [FX + 13, y0 + 2.4, 92], [FX + 13, 0, 92], [FX - 13, 0, 66]] },
+    disc(lampF, 0, 5, 3.6, "mid"), { k: "sph", c: G.pointOf(lampF, 8, 0, 0), r: 3.6, t: "hi" },
+    ...[64, 88].flatMap((z) => { const F = { o: [x0, -15, z], a: [-1, 0, 0], u: [0, 0, 1], v: [0, -1, 0] }; return [disc(F, 0, 2, 3, "mid"), disc(F, 2, 7, 5.5, "mid")]; }),
+  ];
+  const routes = [
+    [[-96, -22, 216], [-96, -22, 226], [-96, -100, 226], [-12, -100, 226]],
+    [[96, -22, 216], [96, -22, 226], [96, -100, 226], [12, -100, 226]],
+  ];
+  RECEPT.forEach(({ x, y, part: id }, i) => {
+    const F = vert(x, y);
+    M[id] = [{ k: "tube", r: 3.2, t: "lo", pts: G.fillet(routes[i], 9, 8, { P, tube: 3.2 }) }, disc(F, ZA + 4, 204, 7.5, "mid"), disc(F, 204, 208, 11, "mid"), disc(F, 208, 214, 6.5, "hi"), disc(F, 214, 216, 4.4, "mid")];
+  });
+  M["cathode-cable"].push(box(-14, -106, 220, 14, -94, 232, "mid"));
+  M.phantom = STEPS.map((h, i) => box(WEDGE.x0 + i * WEDGE.w, WEDGE.y0, DET_Z, WEDGE.x0 + (i + 1) * WEDGE.w, WEDGE.y0 + WEDGE.d, DET_Z + h, "alu"));
+  const det = { x: FX - 58, y: -52, w: 116, d: 104 };
+  M.detector = [plan(det, 0, DET_Z, "mid"), box(det.x + det.w - 30, det.y + det.d, 2, det.x + det.w - 10, det.y + det.d + 3, 6, "mid"), box(FX - FIELD, -FIELD, DET_Z, FX + FIELD, FIELD, DET_Z + 0.3, "lo")];
+  const con = { x: -150, y: 18, w: 70, d: 46 };
+  M.console = [plan(con, 0, 22, "mid"), ...[con.x + 8, con.x + 30, con.x + 52].map((x) => box(x, con.y + 8, 22, x + 16, con.y + 17, 22.6, "lo")),
+    ...[con.x + 16, con.x + 38].map((x) => disc(vert(x, con.y + 30), 22, 25, 4.5, "mid")), disc(vert(con.x + 58, con.y + 31), 22, 24, 6, "mid"), disc(vert(con.x + 58, con.y + 31), 24, 26.4, 4.4, "heat")];
+  const fl = { x: COLUMN.x - 8, y: COLUMN.y - 8, w: COLUMN.w + 16, d: COLUMN.d + 16 };
+  M.stand = [plan(fl, 0, 6, "lo"), plan(COLUMN, 6, COLUMN_TOP, "mid"), box(COLUMN.x - 1.5, COLUMN.y - 1.5, COLUMN_TOP, COLUMN.x + COLUMN.w + 1.5, COLUMN.y + COLUMN.d + 1.5, COLUMN_TOP + 4, "mid"),
+    box(-15, -120, ZA - 22, 15, -90, ZA + 22, "mid"), box(15, -107, ZA + 10, 18, -103, ZA + 14, "mid"), disc(vert(19, -105), ZA + 8, ZA + 16, 3.2, "mid"), box(-8, -90, ZA - 8, 8, -50, ZA + 8, "mid")];
+  const round = (v) => (Array.isArray(v) ? v.map(round) : typeof v === "number" ? Math.round(v * 1000) / 1000 : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([a, b]) => [a, round(b)])) : v);
+  return round(M);
+}

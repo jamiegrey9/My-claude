@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import * as k from "./kit/iso-kit.mjs";
-import { build, extras, WIDTH, HEIGHT } from "./geometry.mjs";
+import { build, extras, models, P, WIDTH, HEIGHT } from "./geometry.mjs";
+import * as G from "./kit/lathe.mjs";
 import { PARTS, STEPS_TEXT } from "./content.mjs";
 
 const svg = build();
@@ -89,11 +90,17 @@ h1{font:600 clamp(26px,4vw,38px)/1.05 var(--font-display);letter-spacing:-.01em;
 .stage[data-lifted] svg{touch-action:none}
 .stage[data-lifted] .fx{opacity:.3}
 .ghost{pointer-events:none}
+.view3d{position:absolute;z-index:3;touch-action:none;cursor:grab;filter:drop-shadow(.5px 0 0 var(--ink-2)) drop-shadow(-.5px 0 0 var(--ink-2)) drop-shadow(0 .5px 0 var(--ink-2)) drop-shadow(0 -.5px 0 var(--ink-2)) drop-shadow(0 12px 12px rgb(0 0 0 / .26))}
+.view3d[hidden]{display:none}
+.stage[data-dragging] .view3d{cursor:grabbing}
+.grip{position:absolute;z-index:4;transform:translate(-50%,-100%);font:500 11px/1 var(--font-mono);letter-spacing:.06em;padding:6px 12px;border-radius:999px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:move;touch-action:none;box-shadow:0 4px 10px -6px #0005}
+.grip[hidden]{display:none}
+.grip:hover{color:var(--ink);border-color:var(--muted)}
 .ghost .cf,.ghost .iso-shade,.ghost .iso-top,.ghost .cs,.ghost .tb-body,.ghost .tb-shine,.ghost .tb-shade,.ghost .tb-ring,.ghost .iso-dots,.ghost text,.ghost .iso-halo,.ghost .mirror,.ghost .det-glow{display:none}
 .ghost .iso-fill{fill:var(--anatomy-shade-0);opacity:.55}
 .ghost .iso-line,.ghost .iso-edge{stroke:var(--anatomy-mid)!important;stroke-dasharray:2 2.4;opacity:.8}
 .pop-status{font-size:12px;color:var(--muted)!important;margin:10px 0 0!important}
-.pop-actions{display:flex;gap:8px;margin-top:10px}
+.pop-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .pop-actions .btn{height:32px;font-size:12.5px}
 .pop-line{position:absolute;pointer-events:none;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--xr);background:var(--surface);transform:translate(-50%,-50%);z-index:4}
 .pop-line[hidden]{display:none}
@@ -190,7 +197,7 @@ const html = `<title>X-Ray Tube Anatomy</title>
 <header class="top">
   <span class="eyebrow">Diagnostic radiography · tube anatomy</span>
   <h1>X-Ray Tube Anatomy</h1>
-  <p class="lede">A standard hospital X-ray tube, cut in half down its axis. Click any part to pull it out of the instrument, drag it around and read what it does. Run an exposure to follow one burst of X-rays from a hot filament to a picture on the detector.</p>
+  <p class="lede">A standard hospital X-ray tube, cut in half down its axis. Click any part to pull it out of the instrument, turn it over in 3D and read what it does. Run an exposure to follow one burst of X-rays from a hot filament to a picture on the detector.</p>
 </header>
 <div class="layout">
   <section aria-label="Tube figure">
@@ -246,14 +253,14 @@ const html = `<title>X-Ray Tube Anatomy</title>
 </div>
 </div>
 <script>
-const DATA = ${JSON.stringify({ X, PARTS, STEPS: STEPS_TEXT, W: WIDTH, H: HEIGHT })};
+const DATA = ${JSON.stringify({ X, PARTS, STEPS: STEPS_TEXT, W: WIDTH, H: HEIGHT, MODELS: models(), K: G.scaleOf(P), VIEW: G.viewOf(P) })};
 ${LIVE()}
 </script>`;
 
 function LIVE() {
   return `
 (function(){
-const { X, PARTS, STEPS, W, H } = DATA;
+const { X, PARTS, STEPS, W, H, MODELS, K, VIEW } = DATA;
 const root = document.documentElement;
 const iso = document.getElementById("iso");
 const darkQ = matchMedia("(prefers-color-scheme: dark)");
@@ -359,9 +366,10 @@ const toView = (e) => { const r = svg.getBoundingClientRect(); return [(e.client
 function card(id){
   const p = PARTS[id];
   const act = ACTS[id];
-  const status = lift ? (lift.wasPlaying ? '<p class="pop-status">Sequence paused while this part is out. Put it back to carry on.</p>' : '<p class="pop-status">Drag the part to look at it from a clear spot.</p>') : '<p class="pop-status">Watching step ' + (step + 1) + ': ' + STEPS[step].title + '.</p>';
+  const how = lift && lift.view ? 'Drag the part to turn it in 3D. Shift-drag or use the Move handle to move it. Double-click to square it up again.' : 'Drag the part to move it.';
+  const status = lift ? '<p class="pop-status">' + (lift.wasPlaying ? 'Sequence paused while this part is out. ' : '') + how + '</p>' : '<p class="pop-status">Watching step ' + (step + 1) + ': ' + STEPS[step].title + '.</p>';
   const actions = lift
-    ? '<div class="pop-actions"><button class="btn" type="button" data-act="back">Put back</button><button class="btn primary" type="button" data-act="watch">See it in action</button></div>'
+    ? '<div class="pop-actions"><button class="btn" type="button" data-act="back">Put back</button>' + (lift.view ? '<button class="btn" type="button" data-act="reset">Square up</button>' : '') + '<button class="btn primary" type="button" data-act="watch">See it in action</button></div>'
     : '<div class="pop-actions"><button class="btn" type="button" data-act="pull">Pull it out</button><button class="btn" type="button" data-act="close">Done</button></div>';
   pop.innerHTML = '<button class="x" type="button" aria-label="Close">×</button><div class="grp">' + p.group + '</div><h3>' + p.name + '</h3><p class="role">' + p.role + '</p><p>' + p.body + '</p><dl>' + p.facts.map(([a,b]) => '<dt>' + a + '</dt><dd>' + b + '</dd>').join("") + '</dl>' + status + actions;
   $(".x", pop).addEventListener("click", () => { select(null); stage.focus(); });
@@ -369,6 +377,7 @@ function card(id){
   pop.querySelector('[data-act="close"]')?.addEventListener("click", () => { select(null); stage.focus(); });
   pop.querySelector('[data-act="pull"]')?.addEventListener("click", () => select(id, "pull"));
   pop.querySelector('[data-act="watch"]')?.addEventListener("click", () => watch(id));
+  pop.querySelector('[data-act="reset"]')?.addEventListener("click", () => resetTurn());
 }
 
 function highlight(id){
@@ -389,7 +398,7 @@ function pull(id){
   let d = [c[0] - W / 2, c[1] - H * .52]; const n = Math.hypot(...d) || 1; d = [d[0] / n, d[1] / n];
   const ts = (x1 - x0) > W * .45 ? 1.02 : 1.12;
   const reach = (x1 - x0) > W * .45 ? 26 : 58;
-  let target = [d[0] * reach, d[1] * reach - 24];
+  let target = (x1 - x0) > W * .45 ? [d[0] * reach, 10] : [d[0] * reach, d[1] * reach - 24];
   target = clampOff(target, [x0, y0, x1, y1], c, ts);
   lift = { id, groups, ghosts, box: [x0, y0, x1, y1], c, off: [0, 0], s: 1, target, ts, wasPlaying: playing, home: false };
   if (playing) pause();
@@ -427,12 +436,14 @@ function liftStep(now){
   const done = Math.hypot(goal[0] - lift.off[0], goal[1] - lift.off[1]) < (lift.home ? .8 : .15) && Math.abs(gs - lift.s) < (lift.home ? .004 : .001);
   if (done && lift.home){ seat(); return; }
   if (!done || lift.drag) liftFrame = requestAnimationFrame(liftStep);
+  else if (!lift.home && !lift.view) loadThree().then(() => { if (lift && !lift.home && !lift.view) enter3D(); }).catch(() => {});
 }
 
 function seat(){
   if (!lift) return;
   lift.groups.forEach((g, i) => { lift.ghosts[i].after(g); lift.ghosts[i].remove(); });
   liftLayer.removeAttribute("transform");
+  liftLayer.style.visibility = "";
   const resume = lift.wasPlaying && lift.resume;
   lift = null; frozen = false;
   stage.removeAttribute("data-lifted");
@@ -443,7 +454,14 @@ function seat(){
 function putBack({ resume = true, instant = false } = {}){
   if (!lift) return;
   lift.resume = resume;
-  lift.home = true; lift.drag = null;
+  lift.drag = null;
+  if (lift.view){
+    if (instant || still.matches){ exit3D(); lift.home = true; seat(); return; }
+    const l = lift;
+    exit3D(() => { if (lift !== l) return; l.home = true; animateLift(); });
+    return;
+  }
+  lift.home = true;
   if (instant || still.matches){ seat(); return; }
   animateLift();
 }
@@ -480,7 +498,7 @@ function place(){
   const a = anchorNow(selected);
   const box = svg.getBoundingClientRect(), sbox = stage.getBoundingClientRect();
   const px = box.left - sbox.left + a[0] / W * box.width, py = box.top - sbox.top + a[1] / H * box.height;
-  dot.hidden = false; dot.style.left = px + "px"; dot.style.top = py + "px";
+  dot.hidden = Boolean(lift && lift.view); dot.style.left = px + "px"; dot.style.top = py + "px";
   if (innerWidth <= 640){ pop.style.left = pop.style.top = ""; return; }
   const pw = pop.offsetWidth, ph = pop.offsetHeight, gap = 22;
   let left, top;
@@ -541,10 +559,240 @@ stage.addEventListener("keydown", (e) => {
   const m = { ArrowLeft: [-step2, 0], ArrowRight: [step2, 0], ArrowUp: [0, -step2], ArrowDown: [0, step2] }[e.key];
   if (!m) return;
   e.preventDefault();
+  if (lift.view && !e.shiftKey){ turnBy(m[0] / 6 * .26, m[1] / 6 * .26); return; }
   lift.off = clampOff([lift.off[0] + m[0], lift.off[1] + m[1]], lift.box, lift.c, lift.s);
   lift.target = [...lift.off];
   paintLift();
+  if (lift.view) layout3D();
 });
+
+/* ---------- 3D inspector ---------- */
+const THREE_URL = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+let threeLoad = null;
+function loadThree(){
+  if (window.THREE) return Promise.resolve(window.THREE);
+  if (!threeLoad) threeLoad = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = THREE_URL; sc.onload = () => window.THREE ? res(window.THREE) : rej(new Error("three")); sc.onerror = () => { threeLoad = null; rej(new Error("three")); }; document.head.appendChild(sc); });
+  return threeLoad;
+}
+setTimeout(() => loadThree().catch(() => {}), 400);
+
+const v3 = { renderer: null, canvas: null, scene: null, camera: null, pivot: null, meshes: [], c: [0, 0, 0], R: 1, px: 1, mode: null };
+const grip = document.createElement("button");
+grip.type = "button"; grip.className = "grip"; grip.hidden = true; grip.textContent = "Move"; grip.setAttribute("aria-label", "Drag to move the part");
+stage.appendChild(grip);
+
+function palette(){
+  const dark = iso.getAttribute("data-theme") === "dark";
+  return dark
+    ? { hi: 0x5a5a5e, mid: 0x434347, lo: 0x2e2e32, lead: 0x34373f, copper: 0x7a5a42, alu: 0x66696f, glass: 0x7d97c2, heat: 0xff8f4a, ink: 0xe6e6e6, edge: 0xd4d4d4, edgeA: .55, glassA: .2 }
+    : { hi: 0xffffff, mid: 0xeeeeec, lo: 0xd0d0cc, lead: 0xb8bcc6, copper: 0xeccaa8, alu: 0xf2f4f7, glass: 0x8fa9d4, heat: 0xd4561a, ink: 0x2a2a2e, edge: 0x2c2c30, edgeA: .6, glassA: .2 };
+}
+
+function buildModel(T, id){
+  const pal = palette();
+  const grad = new T.DataTexture(new Uint8Array([110, 160, 215, 255]), 4, 1, T.LuminanceFormat);
+  grad.minFilter = grad.magFilter = T.NearestFilter; grad.needsUpdate = true;
+  const mats = {};
+  const mat = (t) => mats[t] ||= (t === "glass"
+    ? new T.MeshToonMaterial({ color: pal.glass, gradientMap: grad, side: T.DoubleSide, transparent: true, opacity: pal.glassA, depthWrite: false })
+    : new T.MeshToonMaterial({ color: pal[t] ?? pal.mid, gradientMap: grad, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+  const edgeMat = new T.LineBasicMaterial({ color: pal.edge, transparent: true, opacity: pal.edgeA });
+  const glassEdge = new T.LineBasicMaterial({ color: pal.glass, transparent: true, opacity: .7 });
+  const group = new T.Group();
+  const meshes = [];
+  const add = (geo, t) => {
+    const m = new T.Mesh(geo, mat(t)); group.add(m); meshes.push(m);
+    group.add(new T.LineSegments(new T.EdgesGeometry(geo, 28), t === "glass" ? glassEdge : edgeMat));
+  };
+  const pt = (F, s, r, ph) => { const c = Math.cos(ph), n = Math.sin(ph); return [0, 1, 2].map((i) => F.o[i] + F.a[i] * s + r * (c * F.u[i] + n * F.v[i])); };
+  const geoOf = (pos, idx) => { const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g; };
+  for (const p of MODELS[id] || []){
+    if (p.k === "rev"){
+      const full = !p.phi, p0 = full ? 0 : p.phi[0], p1 = full ? Math.PI * 2 : p.phi[1], n = full ? 64 : 36, sec = p.sec;
+      for (let i = 0; i < sec.length; i++){
+        const a = sec[i], b = sec[(i + 1) % sec.length];
+        if (full && i === sec.length - 1) continue;
+        if (a[1] < .01 && b[1] < .01) continue;
+        const pos = [], idx = [];
+        for (let j = 0; j <= n; j++){ const ph = p0 + (p1 - p0) * j / n; pos.push(...pt(p.F, a[0], a[1], ph), ...pt(p.F, b[0], b[1], ph)); }
+        for (let j = 0; j < n; j++){ const q = j * 2; idx.push(q, q + 1, q + 3, q, q + 3, q + 2); }
+        add(geoOf(pos, idx), p.t);
+      }
+      if (!full){
+        const faces = T.ShapeUtils.triangulateShape(sec.map(([s2, r]) => new T.Vector2(s2, r)), []);
+        for (const ph of [p0, p1]){ const pos = []; sec.forEach(([s2, r]) => pos.push(...pt(p.F, s2, r, ph))); add(geoOf(pos, faces.flat()), p.t); }
+      }
+    } else if (p.k === "box"){
+      const g = new T.BoxGeometry(p.b[0] - p.a[0], p.b[1] - p.a[1], p.b[2] - p.a[2]);
+      g.translate((p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2, (p.a[2] + p.b[2]) / 2);
+      add(g, p.t);
+    } else if (p.k === "tube"){
+      const pts = p.pts.map((q) => new T.Vector3(...q));
+      const curve = new T.CatmullRomCurve3(pts, false, "centripetal", 0);
+      const m = new T.Mesh(new T.TubeGeometry(curve, Math.min(400, pts.length * 3), p.r, 12, false), mat(p.t)); group.add(m); meshes.push(m);
+      for (const e of [0, 1]){ const at = pts[e ? pts.length - 1 : 0], dir = curve.getTangent(e); const cap = new T.CircleGeometry(p.r, 16); const mm = new T.Mesh(cap, mat(p.t)); mm.position.copy(at); mm.lookAt(at.clone().add(dir)); group.add(mm); }
+    } else if (p.k === "sph"){
+      const g = new T.SphereGeometry(p.r, 24, 16); g.translate(...p.c); add(g, p.t);
+    } else if (p.k === "quad"){
+      add(geoOf(p.pts.flat(), [0, 1, 2, 0, 2, 3]), p.t);
+    } else if (p.k === "line"){
+      const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(p.pts.flat(), 3));
+      group.add(new T.Line(g, new T.LineBasicMaterial({ color: pal[p.t] ?? pal.ink })));
+    }
+  }
+  const box = new T.Box3().setFromObject(group);
+  const c = box.getCenter(new T.Vector3());
+  let R = 0; group.traverse((o) => { const a = o.geometry && o.geometry.attributes.position; if (!a) return; o.updateMatrixWorld(); for (let i = 0; i < a.count; i++){ const v = new T.Vector3().fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld); R = Math.max(R, v.distanceTo(c)); } });
+  return { group, meshes, c: [c.x, c.y, c.z], R };
+}
+
+function enter3D(){
+  const T = window.THREE;
+  if (!T || !lift || lift.view || !MODELS[lift.id]) return;
+  try {
+    if (!v3.renderer){
+      v3.renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
+      v3.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      v3.canvas = v3.renderer.domElement; v3.canvas.className = "view3d"; v3.canvas.hidden = true;
+      v3.canvas.setAttribute("aria-label", "3D view of the pulled-out part. Drag to turn it.");
+      stage.appendChild(v3.canvas);
+      wire3D();
+    }
+  } catch (err){ v3.renderer = null; return; }
+  const m = buildModel(T, lift.id);
+  const scene = new T.Scene();
+  const mirror = new T.Group(); mirror.scale.set(1, -1, 1); mirror.add(m.group);
+  mirror.position.set(-m.c[0], m.c[1], -m.c[2]);
+  const pivot = new T.Group(); pivot.add(mirror); scene.add(pivot);
+  const cam = new T.OrthographicCamera(-1, 1, 1, -1, 1, 6000);
+  const Vt = new T.Vector3(VIEW[0], -VIEW[1], VIEW[2]).normalize();
+  cam.up.set(0, 0, 1); cam.position.copy(Vt.multiplyScalar(3000)); cam.lookAt(0, 0, 0);
+  scene.add(cam);
+  scene.add(new T.AmbientLight(0xffffff, .5));
+  const sun = new T.DirectionalLight(0xffffff, .75); sun.position.set(-1.2, 1.6, 1); cam.add(sun); cam.add(sun.target); sun.target.position.set(0, 0, -1);
+  Object.assign(v3, { scene, camera: cam, pivot, meshes: m.meshes, c: m.c, R: m.R });
+  lift.view = true;
+  liftLayer.style.visibility = "hidden";
+  v3.canvas.hidden = false; grip.hidden = false;
+  stage.setAttribute("data-3d", "");
+  layout3D();
+  card(lift.id); place();
+}
+
+function layout3D(){
+  if (!lift || !lift.view) return;
+  const box = svg.getBoundingClientRect(), sbox = stage.getBoundingClientRect();
+  const cs = proj(v3.c);
+  const sx = lift.c[0] + (cs[0] - lift.c[0]) * lift.s + lift.off[0], sy = lift.c[1] + (cs[1] - lift.c[1]) * lift.s + lift.off[1];
+  const px = box.left - sbox.left + sx / W * box.width, py = box.top - sbox.top + sy / H * box.height;
+  v3.px = K * lift.s * box.width / W;
+  const size = Math.ceil(2 * v3.R * v3.px + 24);
+  v3.canvas.style.width = v3.canvas.style.height = size + "px";
+  v3.canvas.style.left = (px - size / 2) + "px"; v3.canvas.style.top = (py - size / 2) + "px";
+  if (v3.size !== size){ v3.renderer.setSize(size, size, false); v3.size = size; }
+  const half = size / 2 / v3.px;
+  Object.assign(v3.camera, { left: -half, right: half, top: half, bottom: -half });
+  v3.camera.updateProjectionMatrix();
+  grip.style.left = px + "px"; grip.style.top = (py - size / 2 + 10) + "px";
+  render3D();
+}
+function render3D(){ if (v3.renderer && lift && lift.view) v3.renderer.render(v3.scene, v3.camera); }
+
+function turnBy(ax, ay){
+  const T = window.THREE; if (!T || !lift || !lift.view) return;
+  const e = v3.camera.matrixWorld.elements;
+  const right = new T.Vector3(e[0], e[1], e[2]).normalize(), up = new T.Vector3(e[4], e[5], e[6]).normalize();
+  const q = new T.Quaternion().setFromAxisAngle(up, ax).multiply(new T.Quaternion().setFromAxisAngle(right, ay));
+  v3.pivot.quaternion.premultiply(q);
+  render3D();
+}
+
+let slerpFrame = 0;
+function slerpHome(done){
+  const T = window.THREE;
+  cancelAnimationFrame(slerpFrame);
+  const from = v3.pivot.quaternion.clone(), to = new T.Quaternion();
+  const ang = 2 * Math.acos(Math.min(1, Math.abs(from.dot(to))));
+  const dur = still.matches ? 0 : Math.min(420, 120 + ang * 160);
+  const t0 = performance.now();
+  const stepQ = (now) => {
+    const u = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - u, 3);
+    v3.pivot.quaternion.copy(from).slerp(to, e); render3D();
+    if (u < 1) slerpFrame = requestAnimationFrame(stepQ); else { slerpFrame = 0; done && done(); }
+  };
+  slerpFrame = requestAnimationFrame(stepQ);
+}
+function resetTurn(){ if (lift && lift.view) slerpHome(); }
+
+function exit3D(done){
+  const finish = () => {
+    if (v3.canvas) v3.canvas.hidden = true;
+    grip.hidden = true;
+    stage.removeAttribute("data-3d");
+    liftLayer.style.visibility = "";
+    if (v3.scene) v3.scene.traverse((o) => { o.geometry && o.geometry.dispose(); });
+    v3.scene = null;
+    if (lift) lift.view = false;
+    done && done();
+  };
+  if (!done || !v3.pivot){ cancelAnimationFrame(slerpFrame); finish(); return; }
+  slerpHome(finish);
+}
+
+function hits(e){
+  const T = window.THREE;
+  const r = v3.canvas.getBoundingClientRect();
+  const ndc = new T.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  const ray = new T.Raycaster(); ray.setFromCamera(ndc, v3.camera);
+  return ray.intersectObjects(v3.meshes, false).length > 0;
+}
+function wire3D(){
+  const begin = (e, mode) => {
+    e.preventDefault(); e.stopPropagation();
+    v3.mode = { kind: mode, x: e.clientX, y: e.clientY, from: [...lift.off], el: e.currentTarget };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    stage.setAttribute("data-dragging", "");
+  };
+  v3.canvas.addEventListener("pointerdown", (e) => {
+    if (!lift || !lift.view) return;
+    begin(e, e.shiftKey ? "move" : "turn");
+    v3.mode.miss = !hits(e); v3.mode.sx = e.clientX; v3.mode.sy = e.clientY;
+  });
+  grip.addEventListener("pointerdown", (e) => { if (lift && lift.view) begin(e, "move"); });
+  const moveTo = (e) => {
+    if (!v3.mode || !lift) return;
+    const box = svg.getBoundingClientRect();
+    if (v3.mode.kind === "turn"){
+      turnBy((e.clientX - v3.mode.x) * .011, (e.clientY - v3.mode.y) * .011);
+      v3.mode.x = e.clientX; v3.mode.y = e.clientY;
+    } else {
+      const dx = (e.clientX - v3.mode.x) * W / box.width, dy = (e.clientY - v3.mode.y) * H / box.height;
+      lift.off = clampOff([v3.mode.from[0] + dx, v3.mode.from[1] + dy], lift.box, lift.c, lift.s);
+      lift.target = [...lift.off];
+      paintLift(); layout3D();
+    }
+  };
+  const end = (e) => {
+    if (!v3.mode) return;
+    const click = v3.mode.miss && e && e.type === "pointerup" && Math.hypot(e.clientX - v3.mode.sx, e.clientY - v3.mode.sy) < 4;
+    v3.mode = null; stage.removeAttribute("data-dragging");
+    if (click) select(null);
+  };
+  for (const el of [v3.canvas, grip]){
+    el.addEventListener("pointermove", moveTo);
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+  v3.canvas.addEventListener("dblclick", (e) => { e.preventDefault(); resetTurn(); });
+  v3.canvas.addEventListener("pointermove", (e) => {
+    if (v3.mode || e.pointerType !== "mouse") { tag.removeAttribute("data-on"); return; }
+    const sbox = stage.getBoundingClientRect();
+    if (hits(e)){ tag.textContent = "Drag to turn · Shift-drag to move"; tag.style.left = (e.clientX - sbox.left) + "px"; tag.style.top = (e.clientY - sbox.top) + "px"; tag.setAttribute("data-on", ""); }
+    else tag.removeAttribute("data-on");
+  });
+  v3.canvas.addEventListener("pointerleave", () => tag.removeAttribute("data-on"));
+  addEventListener("resize", layout3D);
+}
 
 /* ---------- sequence UI ---------- */
 const stTitle = $("[data-st-title]"), stBody = $("[data-st-body]"), phase = $("[data-phase]"), playBtn = $("#play");
