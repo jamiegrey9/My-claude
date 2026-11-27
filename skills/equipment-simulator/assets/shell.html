@@ -1,0 +1,95 @@
+<title>Device Name Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* One-screen layout: a header line, then the figure (dominant) beside a slim process rail.
+   Fits 1280×720 and up with no page scroll; stacks and scrolls only below 900px wide.
+   Replace every [bracketed] placeholder. Keep the class names: the check scripts use them. */
+:root{
+  --bg:#efefeb;--surface:#fbfbfa;--ink:#18181a;--ink-2:#57575a;--muted:#8c8c90;--rule:#d9d9d5;
+  --accent:#4b3fd6;--accent-soft:#4b3fd622;--on-accent:#fff;--heat:#d4561a;
+  --font-display:"IBM Plex Sans Condensed","IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-body:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --rail:clamp(290px,25vw,360px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0b0c;--surface:#131314;--ink:#e8e8e6;--ink-2:#a3a3a3;--muted:#6e6e70;--rule:#2a2a2c;--accent:#9d94ff;--accent-soft:#9d94ff22;--on-accent:#0b0b0c;--heat:#ff8f4a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b0b0c;--surface:#131314;--ink:#e8e8e6;--ink-2:#a3a3a3;--muted:#6e6e70;--rule:#2a2a2c;--accent:#9d94ff;--accent-soft:#9d94ff22;--on-accent:#0b0b0c;--heat:#ff8f4a;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--font-body);-webkit-font-smoothing:antialiased;overflow:hidden}
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1600px;margin:0 auto}
+.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;min-width:0}
+.top h1{font:600 clamp(20px,2.2vw,28px)/1.1 var(--font-display);margin:0}
+.top p{margin:0;color:var(--ink-2);font-size:13px;min-width:0;flex:1 1 300px}
+.main{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);gap:12px;min-height:0}
+.figure-card{position:relative;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto;background:var(--surface);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.stage{position:relative;min-height:0;display:grid;place-items:center;padding:30px 12px 8px}
+.stage>svg{width:100%;height:100%;max-height:100%;display:block}
+.corner{position:absolute;font:500 10.5px/1 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);pointer-events:none}
+.corner.tl{top:12px;left:14px}.corner.tr{top:12px;right:14px}
+.dock{display:flex;gap:6px;overflow-x:auto;padding:8px 12px 10px;border-top:1px solid var(--rule);scrollbar-width:thin}
+.chip{flex:none;font:500 12px/1 var(--font-body);padding:7px 10px;border-radius:999px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.rail{display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:10px;min-height:0;overflow:auto}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;min-height:0}
+.card h2{font:600 11px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);margin:0 0 10px;display:flex;justify-content:space-between}
+.card h2 small{font-weight:400;letter-spacing:.04em;text-transform:none;color:var(--muted)}
+ol.steps{list-style:none;margin:0 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(26px,1fr));gap:4px}
+ol.steps button{width:100%;height:26px;border:1px solid var(--rule);background:transparent;border-radius:4px;color:var(--muted);font:500 11.5px/1 var(--font-mono);cursor:pointer}
+ol.steps button[aria-current="step"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.now h3{font:600 16px/1.2 var(--font-display);margin:0 0 4px}
+.now p{margin:0;color:var(--ink-2);font-size:13px;line-height:1.45;min-height:5.8em}
+.transport{display:flex;gap:6px;margin-top:10px}
+.btn{flex:1;height:32px;border-radius:5px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);font:500 12.5px/1 var(--font-body);cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.ctl{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:8px;margin:6px 0;font:500 12px/1 var(--font-mono);color:var(--ink-2)}
+.ctl input{width:100%;accent-color:var(--accent)}
+.ctl output{color:var(--ink);min-width:52px;text-align:right}
+.outcome{display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0}
+.outcome .view{min-height:90px;border-radius:4px;background:var(--bg);display:grid;place-items:center;color:var(--muted);font-size:12px}
+.pop{position:absolute;z-index:5;width:min(300px,80%);background:var(--surface);border:1px solid var(--rule);border-radius:6px;box-shadow:0 12px 32px -12px #0006;padding:12px 14px;font-size:13px;max-height:calc(100% - 24px);overflow:auto}
+button:focus-visible,input:focus-visible,.stage:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-height:760px){.now p{min-height:4.4em}.stage{padding-top:26px}.card{padding:10px 12px}}
+@media (max-width:900px){
+  body{overflow:auto}
+  .app{height:auto;grid-template-rows:auto auto}
+  .main{grid-template-columns:minmax(0,1fr)}
+  .figure-card{height:min(78vh,560px)}
+  .rail{overflow:visible}
+  .pop{position:relative;width:auto;margin:8px}
+}
+</style>
+<div class="app">
+  <header class="top">
+    <h1>[Device name]</h1>
+    <p>[One line: what the learner can do here. Click a part to pull it out; play the process to follow it.]</p>
+  </header>
+  <div class="main">
+    <section class="figure-card" aria-label="[Device] figure">
+      <div class="stage" tabindex="0">
+        <span class="corner tl">Fig 1</span><span class="corner tr">[Device · half section]</span>
+        <svg viewBox="0 0 640 470" role="img" aria-label="[What the drawing shows]"><rect x="40" y="40" width="560" height="390" rx="8" fill="none" stroke="currentColor" stroke-dasharray="4 4" opacity=".3"/><text x="320" y="240" text-anchor="middle" fill="currentColor" opacity=".4" font-size="14">[figure]</text></svg>
+      </div>
+      <nav class="dock" aria-label="Parts">[part chips: one button.chip[data-pick] per part]</nav>
+    </section>
+    <aside class="rail">
+      <div class="card" aria-label="Process">
+        <h2>[Process name] <small data-phase>step 1 of 6</small></h2>
+        <ol class="steps">[li > button[data-step] per step]</ol>
+        <div class="now" aria-live="polite"><h3>[Step title]</h3><p>[Two or three plain sentences: what is happening now and why it matters.]</p></div>
+        <div class="transport"><button class="btn" id="back">Back</button><button class="btn primary" id="play">Play</button><button class="btn" id="next">Next</button></div>
+      </div>
+      <div class="card" aria-label="Controls">
+        <h2>[Controls] <small>[what they change]</small></h2>
+        <div class="ctl"><label for="c1">[Knob]</label><input id="c1" type="range"><output>[value]</output></div>
+        <div class="ctl"><label for="c2">[Knob]</label><input id="c2" type="range"><output>[value]</output></div>
+      </div>
+      <div class="card outcome" aria-label="Result">
+        <h2>[Result] <small>[e.g. the image formed]</small></h2>
+        <div class="view">[one visual result: image, trace, pulse, field]</div>
+      </div>
+    </aside>
+  </div>
+</div>
